@@ -7,13 +7,15 @@
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     body { margin: 18px; background: #0b1020; color: #e8eefc; }
+    /* Giữ nguyên bố cục chính: 4 cột */
     .grid { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 16px; }
     .card { background: #121833; border: 1px solid #24325f; border-radius: 14px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
     h1 { margin: 0 0 16px; font-size: 22px; }
     h2 { margin: 0 0 12px; font-size: 16px; color: #a8c1ff; }
     pre { background: #0f1530; padding: 10px; border-radius: 10px; overflow: auto; max-height: 260px;}
     .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    button { background: #2a6dfb; color: white; border: 0; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+    button { background: #2a6dfb; color: white; border: 0; padding: 8px 12px; border-radius: 10px; cursor: pointer; transition: background-color 0.15s ease;}
+    button:hover:not(:disabled) { background: #4a8dfd; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .ok { color: #87f59a; font-weight: 700; }
     .bad { color: #ff7b7b; font-weight: 700; }
@@ -29,22 +31,20 @@
   <h1>Ontology GraphOps Monitor Pro</h1>
 
   <div class="grid">
-    <!-- Health -->
     <div class="card">
-      <h2>Health</h2>
+      <h2>Trạng Thái</h2>
       <div class="row">
-        <div>Overall:&nbsp;<span id="health-ok" class="muted">...</span></div>
-        <button id="btn-refresh-health">Refresh</button>
+        <div>Tổng thể:&nbsp;<span id="health-ok" class="muted">...</span></div>
+        <button id="btn-refresh-health">Làm mới</button>
       </div>
       <pre id="health-json">{ "loading": true }</pre>
     </div>
 
-    <!-- Counts -->
     <div class="card">
-      <h2>Counts</h2>
+      <h2>Số Lượng</h2>
       <div class="row">
-        <button id="btn-refresh-counts">Refresh</button>
-        <label class="muted"><input type="checkbox" id="auto-refresh" /> Auto refresh (5s)</label>
+        <button id="btn-refresh-counts">Làm mới</button>
+        <label class="muted"><input type="checkbox" id="auto-refresh" /> Tự động làm mới (5s)</label>
       </div>
       <div class="kpi">
         <div><div class="muted">LawArticle</div><div id="c-article" class="stat">-</div></div>
@@ -55,39 +55,46 @@
       <pre id="counts-json" style="margin-top: 8px;">{ "loading": true }</pre>
     </div>
 
-    <!-- Audit -->
     <div class="card">
-      <h2>Audit</h2>
+      <h2>Kiểm Tra</h2>
       <div class="row">
-        <button id="btn-run-audit">Run Audit</button>
+        <button id="btn-run-audit">Chạy Kiểm tra</button>
         <span id="audit-status" class="muted">Chưa chạy</span>
       </div>
-      <pre id="audit-json" style="margin-top: 8px;">(click Run Audit)</pre>
+      <pre id="audit-json" style="margin-top: 8px;">(Nhấn Chạy Kiểm tra)</pre>
       <div class="muted" style="margin-top: 6px;">Báo cáo lưu tại <code>build/reports/ontology_audit_*.json</code></div>
     </div>
 
-    <!-- Repo summary -->
     <div class="card">
-      <h2>Repo Summary</h2>
+      <h2>Tóm tắt Repo</h2>
       <div class="row">
-        <button id="btn-refresh-repo">Refresh</button>
+        <button id="btn-refresh-repo">Làm mới</button>
       </div>
       <pre id="repo-json">{ "loading": true }</pre>
     </div>
   </div>
 
-  <!-- DLQ + Ops -->
-  <div class="grid" style="grid-template-columns: 1fr 3fr; margin-top:16px;">
+  <div class="grid" style="grid-template-columns: repeat(3, minmax(260px, 1fr)); margin-top:16px;">
     <div class="card">
       <h2>DLQ Viewer</h2>
       <div class="row">
-        <button id="btn-tail-dlq">Tail DLQ</button>
+        <button id="btn-tail-dlq">Xem 10 lỗi cuối</button>
       </div>
       <pre id="dlq-json">Chưa có dữ liệu</pre>
     </div>
+    
+    <div class="card" id="card-ops">
+      <h2>Vận Hành (Ops)</h2>
+      <div class="row">
+        <button id="btn-diagnose">Kiểm tra nhanh</button>
+        <button id="btn-emit">Đẩy dữ liệu</button>
+        <button id="btn-consume-once">Consume 1 lần</button>
+        <button id="btn-repo-sync">Đồng bộ Repo</button>
+      </div>
+      <pre id="ops-json" style="margin-top: 10px;">(Chờ thao tác)</pre>
+    </div>
 
-    <div class="card">
-      <h2>Realtime Logs</h2>
+    <div class="card" style="grid-column: span 1;"> <h2>Logs Thời Gian Thực</h2>
       <pre id="logs">(SSE) /stream/logs...</pre>
     </div>
   </div>
@@ -99,62 +106,162 @@
       <a href="/counts" target="_blank">/counts</a>
       <a href="/repo" target="_blank">/repo</a>
       <a href="/dlq/tail" target="_blank">/dlq/tail</a>
-      <a href="/docs" target="_blank">/docs</a>
+      <a href="/ops/diagnose" target="_blank">/ops/diagnose</a> <a href="/docs" target="_blank">/docs</a>
     </div>
   </div>
+
 
 <script>
 const $ = (sel) => document.querySelector(sel);
 
-// ---- Health ----
+// ---- Utility: Hàm POST JSON an toàn hơn ----
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: body ? JSON.stringify(body) : "{}"
+  });
+  if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+  return res.json();
+}
+
+// ---- Health (Fixed) ----
 async function loadHealth() {
-  $("#health-ok").textContent = "...";
+  $("#health-ok").textContent = "Đang tải...";
   $("#health-ok").className = "muted";
-  const res = await fetch("/health");
-  const data = await res.json().catch(() => ({ok:false, error:"fetch failed"}));
-  $("#health-json").textContent = JSON.stringify(data, null, 2);
-  $("#health-ok").textContent = data.ok ? "OK" : "FAIL";
-  $("#health-ok").className = data.ok ? "ok" : "bad";
+  try {
+    const res = await fetch("/health");
+    if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+    const data = await res.json();
+    $("#health-json").textContent = JSON.stringify(data, null, 2);
+    $("#health-ok").textContent = data.ok ? "OK" : "LỖI";
+    $("#health-ok").className = data.ok ? "ok" : "bad";
+  } catch (error) {
+    $("#health-json").textContent = JSON.stringify({ ok: false, error: error.message || "Tải thất bại" }, null, 2);
+    $("#health-ok").textContent = "FAIL";
+    $("#health-ok").className = "bad";
+  }
 }
 
-// ---- Counts ----
+// ---- Counts (Fixed) ----
 async function loadCounts() {
-  const res = await fetch("/counts");
-  const data = await res.json().catch(() => ({ok:false, counts:{}}));
-  const c = data.counts || {};
-  $("#c-article").textContent = c.LawArticle ?? "-";
-  $("#c-concept").textContent = c.LawConcept ?? "-";
-  $("#c-entity").textContent  = c.LawEntity  ?? "-";
-  $("#c-refers").textContent  = c.REFERS_TO  ?? "-";
-  $("#counts-json").textContent = JSON.stringify(data, null, 2);
+  const statIds = ["c-article", "c-concept", "c-entity", "c-refers"];
+  statIds.forEach(id => $("#" + id).textContent = "...");
+  try {
+    const res = await fetch("/counts");
+    if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+    const data = await res.json();
+    const c = data.counts || {};
+    $("#c-article").textContent = c.LawArticle ?? "-";
+    $("#c-concept").textContent = c.LawConcept ?? "-";
+    $("#c-entity").textContent  = c.LawEntity  ?? "-";
+    $("#c-refers").textContent  = c.REFERS_TO  ?? "-";
+    $("#counts-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    statIds.forEach(id => $("#" + id).textContent = "ERR");
+    $("#counts-json").textContent = JSON.stringify({ ok: false, error: error.message || "Tải thất bại" }, null, 2);
+  }
 }
 
-// ---- Audit ----
+// ---- Audit (Fixed) ----
 async function runAudit() {
   $("#btn-run-audit").disabled = true;
   $("#audit-status").textContent = "Đang chạy...";
-  const res = await fetch("/audit", {method:"POST"});
-  const data = await res.json().catch(() => ({ok:false}));
-  $("#audit-json").textContent = JSON.stringify(data.report || data, null, 2);
-  const ok = (data.report && data.report.ok) || data.ok;
-  $("#audit-status").textContent = ok ? "OK" : "ISSUES FOUND";
-  $("#audit-status").className = ok ? "ok" : "bad";
-  $("#btn-run-audit").disabled = false;
+  try {
+    const res = await fetch("/audit", {method:"POST"});
+    if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+    const data = await res.json();
+    $("#audit-json").textContent = JSON.stringify(data.report || data, null, 2);
+    // Kiểm tra data.report.ok trước, sau đó là data.ok
+    const ok = (data.report && data.report.ok) ?? data.ok; 
+    $("#audit-status").textContent = ok ? "OK" : "ISSUES FOUND";
+    $("#audit-status").className = ok ? "ok" : "bad";
+  } catch (error) {
+    $("#audit-json").textContent = JSON.stringify({ ok: false, error: error.message || "Chạy thất bại" }, null, 2);
+    $("#audit-status").textContent = "LỖI KỸ THUẬT";
+    $("#audit-status").className = "bad";
+  } finally {
+    $("#btn-run-audit").disabled = false;
+  }
 }
 
-// ---- Repo ----
+// ---- Repo (Fixed) ----
 async function loadRepo() {
-  const res = await fetch("/repo");
-  const data = await res.json().catch(() => ({ok:false}));
-  $("#repo-json").textContent = JSON.stringify(data, null, 2);
+  $("#repo-json").textContent = JSON.stringify({ loading: true }, null, 2);
+  try {
+    const res = await fetch("/repo");
+    if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+    const data = await res.json();
+    $("#repo-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    $("#repo-json").textContent = JSON.stringify({ ok: false, error: error.message || "Tải thất bại" }, null, 2);
+  }
 }
 
-// ---- DLQ ----
+// ---- DLQ (Fixed) ----
 async function tailDLQ() {
-  const res = await fetch("/dlq/tail?n=10");
-  const data = await res.json().catch(() => ({ok:false}));
-  $("#dlq-json").textContent = JSON.stringify(data, null, 2);
+  $("#dlq-json").textContent = "Đang tải...";
+  try {
+    const res = await fetch("/dlq/tail?n=10");
+    if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+    const data = await res.json();
+    $("#dlq-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    $("#dlq-json").textContent = JSON.stringify({ ok: false, error: error.message || "Tải thất bại" }, null, 2);
+  }
 }
+
+// ---- OPS Functions (Fixed/New) ----
+
+async function runDiagnose() {
+  try {
+    const res = await fetch("/ops/diagnose"); // Giả định là GET hoặc POST không body
+    if (!res.ok) throw new Error(`Lỗi HTTP! Status: ${res.status}`);
+    const data = await res.json();
+    $("#ops-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    $("#ops-json").textContent = JSON.stringify({ ok: false, error: `Diagnose thất bại: ${error.message}` }, null, 2);
+  }
+}
+
+$("#btn-diagnose").addEventListener("click", runDiagnose);
+
+$("#btn-emit").addEventListener("click", async () => {
+  $("#ops-json").textContent = "(Đang chạy Emit...)";
+  try {
+    const input = prompt("Input JSONL path (để trống để dùng ONTOLOGY_FILE):", "");
+    const dry = confirm("Dry-run? OK=Có, Cancel=Không");
+    const data = await postJson("/ops/emit", { input: input || undefined, dry_run: dry });
+    $("#ops-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    $("#ops-json").textContent = JSON.stringify({ ok: false, error: `Emit thất bại: ${error.message}` }, null, 2);
+  }
+});
+
+$("#btn-consume-once").addEventListener("click", async () => {
+  $("#ops-json").textContent = "(Đang chạy Consume Once...)";
+  try {
+    const gid = `ontology-consumer-once-${Date.now()}`;
+    const data = await postJson("/ops/consume-once", {
+      group_id: gid, auto_offset_reset: "earliest", idle_timeout_sec: 3
+    });
+    $("#ops-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    $("#ops-json").textContent = JSON.stringify({ ok: false, error: `Consume thất bại: ${error.message}` }, null, 2);
+  }
+});
+
+$("#btn-repo-sync").addEventListener("click", async () => {
+  $("#ops-json").textContent = "(Đang chạy Repo Sync...)";
+  try {
+    const msg = prompt("Commit message:", "chore: sync from dashboard");
+    const data = await postJson("/ops/repo-sync", { message: msg });
+    $("#ops-json").textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    $("#ops-json").textContent = JSON.stringify({ ok: false, error: `Repo Sync thất bại: ${error.message}` }, null, 2);
+  }
+});
+
 
 // ---- SSE logs ----
 let evt = null;
@@ -162,6 +269,7 @@ function startSSE() {
   if (evt) evt.close();
   evt = new EventSource("/stream/logs");
   const box = $("#logs");
+  box.textContent = "(Đang kết nối logs...)\n";
   evt.onmessage = (e) => {
     box.textContent += (e.data || "") + "\n";
     box.scrollTop = box.scrollHeight;
@@ -179,6 +287,8 @@ $("#btn-tail-dlq").addEventListener("click", tailDLQ);
 let timer = null;
 $("#auto-refresh").addEventListener("change", (e) => {
   if (e.target.checked) {
+    // Tải ngay lần đầu khi check
+    loadCounts(); 
     timer = setInterval(loadCounts, 5000);
   } else {
     clearInterval(timer); timer = null;
@@ -190,4 +300,3 @@ loadHealth(); loadCounts(); loadRepo(); startSSE();
 </script>
 </body>
 </html>
-

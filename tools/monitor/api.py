@@ -260,3 +260,104 @@ def root() -> Dict[str, Any]:
 async def _banner() -> None:
     jlog("info", "startup", app=APP_NAME, version=VERSION)
 
+# --- OPS: Emit / Consume Once / Repo Sync ---
+import subprocess
+from typing import Optional
+
+def _run(cmd: list[str], cwd: Optional[str] = None, timeout: int = 600) -> dict:
+    try:
+        p = subprocess.run(
+            cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout
+        )
+        return {
+            "ok": p.returncode == 0,
+            "returncode": p.returncode,
+            "stdout": p.stdout[-8000:],
+            "stderr": p.stderr[-8000:],
+            "cmd": " ".join(cmd),
+        }
+    except subprocess.TimeoutExpired as e:
+        return {"ok": False, "error": "timeout", "stdout": e.stdout, "stderr": e.stderr}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/ops/emit")
+def ops_emit(payload: dict = None):
+    """
+    Body (optional):
+    { "input": "/path/to/file.jsonl", "dry_run": false }
+    """
+    s = Settings.load()
+    input_path = (payload or {}).get("input") or s.ONTOLOGY_FILE
+    dry_run = bool((payload or {}).get("dry_run", False))
+    cmd = [
+        "python", "-m", "tools.ontology.emit_graphops_jsonl",
+        "--input", input_path, "--json"
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    res = _run(cmd)
+    jlog("info", "ops_emit", input=input_path, dry_run=dry_run, **res)
+    return res
+
+@app.post("/ops/consume-once")
+def ops_consume_once(payload: dict = None):
+    """
+    Body (optional):
+    {
+      "group_id": "ontology-consumer-once-<ts>",
+      "auto_offset_reset": "earliest",
+      "idle_timeout_sec": 3
+    }
+    """
+    group_id = (payload or {}).get("group_id") or f"ontology-consumer-once-{int(time.time())}"
+    aor = (payload or {}).get("auto_offset_reset", "earliest")
+    idle = int((payload or {}).get("idle_timeout_sec", 3))
+    cmd = [
+        "python", "-m", "services.ontology.ontology_consumer",
+        "--json", "--once", "--idle-timeout-sec", str(idle),
+        "--auto-offset-reset", aor, "--group-id", group_id
+    ]
+    res = _run(cmd, timeout=900)
+    jlog("info", "ops_consume_once", group_id=group_id, **res)
+    return res
+
+@app.post("/ops/repo-sync")
+def ops_repo_sync(payload: dict = None):
+    """
+    Body (optional):
+    { "message": "chore: sync from dashboard" }
+    - Safe add: chỉ add các file code/tài nguyên dự án; KHÔNG add .env, .venv, build/
+    """
+    msg = (payload or {}).get("message") or "chore: sync from dashboard"
+    # 1) git add (white-list)
+    add_paths = [
+        "tools/monitor/api.py",
+        "tools/monitor/dashboard.html",
+        "tools/ontology/audit_integrity.py",
+        "tools/ontology/emit_graphops_jsonl.py",
+        "services/ontology/ontology_consumer.py",
+        "common/",
+        "models/",
+        "data/ontology/",
+        "docker-compose.kafka.yml",
+        "docker-compose.neo4j.yml",
+        "Makefile",
+        "pyproject.toml",
+        ".gitignore",
+        ".env.example",
+        "README.md",
+    ]
+    res_add = _run(["git", "add"] + add_paths)
+    if not res_add.get("ok"):
+        return {"ok": False, "step": "git add", **res_add}
+
+    # 2) commit (cho phép no-op nếu không có thay đổi)
+    res_commit = _run(["git", "commit", "-m", msg])
+    # if nothing to commit, git returns non-zero; ta vẫn tiếp tục push
+    # 3) push
+    res_push = _run(["git", "push", "-u", "origin", "main"])
+    ok = res_push.get("ok", False)
+    jlog("info", "ops_repo_sync", message=msg, push_ok=ok, add=res_add, commit=res_commit, push=res_push)
+    return {"ok": ok, "add": res_add, "commit": res_commit, "push": res_push}
+
