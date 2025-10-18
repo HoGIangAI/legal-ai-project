@@ -1,282 +1,262 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Ontology GraphOps Monitor API (v0.2.0)
+Endpoints:
+- GET  /health         : Kiểm tra Kafka, topic/DLQ, Neo4j
+- GET  /counts         : Đếm node/edge chính
+- POST /audit          : Chạy audit và lưu báo cáo JSON vào build/reports/
+- GET  /repo           : Thông tin báo cáo audit mới nhất
+- GET  /dlq/tail       : Đọc nhanh các bản ghi mới nhất từ DLQ (mặc định n=10)
+- GET  /stream/logs    : SSE stream đọc file loop.log (Realtime logs)
+- GET  /dashboard      : UI HTML
+- GET  /               : Info
+"""
+
+from __future__ import annotations
+
 import asyncio
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-import os, json, time
+import json
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+
 from confluent_kafka import Consumer
+from neo4j import GraphDatabase
+
+# các util trong repo
 from common.env import Settings
 from common.diagnostics import kafka_admin, ensure_topic, check_neo4j
 from tools.ontology.audit_integrity import audit as run_audit
-from neo4j import GraphDatabase
-from confluent_kafka import Producer
+
 
 APP_NAME = "Ontology GraphOps Monitor Pro"
-app = FastAPI(title=APP_NAME, version="0.2.0")
+VERSION = "0.2.0"
 
+app = FastAPI(title=APP_NAME, version=VERSION)
+
+# CORS mở cho tiện quan sát cục bộ
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# === utility log helper ===
-def jlog(level: str, msg: str, **extra: Any):
-    print(json.dumps({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "level": level, "module": "monitor_api", "msg": msg, "extra": extra
-    }))
 
-# === core helpers ===
-def _neo4j_counts(uri: str, user: str, pwd: str) -> Dict[str,int]:
+def jlog(level: str, msg: str, **extra: Any) -> None:
+    """Structured log đơn giản cho API monitor."""
+    print(
+        json.dumps(
+            {
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "level": level,
+                "module": "monitor_api",
+                "msg": msg,
+                "extra": extra,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def _neo4j_counts(uri: str, user: str, pwd: str) -> Dict[str, int]:
+    """Đếm một số label/relationship thường dùng."""
     drv = GraphDatabase.driver(uri, auth=(user, pwd))
-    def scalar(q): 
+
+    def scalar(q: str) -> int:
         with drv.session() as s:
             rec = s.run(q).single()
             return 0 if rec is None else list(rec.values())[0]
+
     data = {
         "LawArticle": scalar("MATCH (n:LawArticle) RETURN count(n) AS c"),
         "LawConcept": scalar("MATCH (n:LawConcept) RETURN count(n) AS c"),
-        "LawEntity" : scalar("MATCH (n:LawEntity) RETURN count(n) AS c"),
-        "REFERS_TO" : scalar("MATCH ()-[r:REFERS_TO]->() RETURN count(r) AS c"),
+        "LawEntity": scalar("MATCH (n:LawEntity) RETURN count(n) AS c"),
+        "REFERS_TO": scalar("MATCH ()-[r:REFERS_TO]->() RETURN count(r) AS c"),
     }
     drv.close()
     return data
 
-# === endpoints ===
-@app.get("/health")
-def health():
-    s = Settings.load()
-    rep = {"ok": True}
-    admin = None  # 👈 đảm bảo biến tồn tại
 
-    # Kafka check
+@app.get("/health")
+def health() -> Dict[str, Any]:
+    """Preflight: Kafka/Topic/DLQ/Neo4j."""
+    s = Settings.load()
+
+    # Kafka
+    k_report: Dict[str, Any]
+    admin = None
     try:
         admin = kafka_admin(s.KAFKA_BOOTSTRAP_SERVERS)
         md = admin.list_topics(timeout=5)
-        rep["kafka"] = {"ok": True, "brokers": len(md.brokers)}
+        k_report = {"ok": True, "brokers": len(md.brokers)}
     except Exception as e:
-        rep["kafka"] = {"ok": False, "error": str(e)}
-        rep["ok"] = False
+        k_report = {"ok": False, "error": str(e)}
 
-    # Neo4j check
-    rep["neo4j"] = check_neo4j(s.NEO4J_URI, s.NEO4J_USER, s.NEO4J_PASSWORD)
-
-    # Topic & DLQ check (chỉ khi Kafka OK)
-    topic = s.TOPIC_GRAPHOPS
-    dlq   = f"{topic}.dlq.v1"
-    if rep["kafka"].get("ok") and admin is not None:
-        rep["topics"] = {
+    # Topic/DLQ
+    topics: Dict[str, Any] = {}
+    if k_report.get("ok") and admin is not None:
+        topic = s.TOPIC_GRAPHOPS
+        dlq = f"{topic}.dlq.v1"
+        topics = {
             "topic": ensure_topic(admin, topic),
-            "dlq":   ensure_topic(admin, dlq)
+            "dlq": ensure_topic(admin, dlq),
         }
-    else:
-        rep["topics"] = {"topic": {"exists": False}, "dlq": {"exists": False}}
-        rep["ok"] = False
 
-    return rep
+    # Neo4j
+    n_report = check_neo4j(s.NEO4J_URI, s.NEO4J_USER, s.NEO4J_PASSWORD)
 
-@app.post("/emit/sample")
-def emit_sample():
-    s = Settings.load()
-    try:
-        prod = Producer({"bootstrap.servers": s.KAFKA_BOOTSTRAP_SERVERS, "acks": "all"})
-        sample = {
-            "op": "upsert",
-            "edge": {
-                "type": "REFERS_TO",
-                "src_label": "LawArticle", "src_id": "A001",
-                "dst_label": "LawConcept", "dst_id": "K001",
-                "props": {"note": "ui-sample"}
-            }
-        }
-        payload = json.dumps(sample, ensure_ascii=False).encode("utf-8")
-        prod.produce(s.TOPIC_GRAPHOPS, value=payload)
-        prod.flush(3)
-        return {"ok": True, "topic": s.TOPIC_GRAPHOPS, "sent": sample}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    ok = (
+        k_report.get("ok")
+        and n_report.get("ok")
+        and topics.get("topic", {}).get("exists", True)
+        and topics.get("dlq", {}).get("exists", True)
+    )
+
+    out = {"ok": bool(ok), "kafka": k_report, "neo4j": n_report, "topics": topics}
+    jlog("info", "health_checked", **out)
+    return out
 
 
 @app.get("/counts")
-def counts():
+def counts() -> Dict[str, Any]:
+    """Đếm số lượng node/edge hiện có trong Neo4j."""
     s = Settings.load()
     c = _neo4j_counts(s.NEO4J_URI, s.NEO4J_USER, s.NEO4J_PASSWORD)
+    jlog("info", "counts", **c)
     return {"ok": True, "counts": c}
 
+
 @app.post("/audit")
-def audit():
+def audit() -> Dict[str, Any]:
+    """Chạy audit & lưu báo cáo."""
     s = Settings.load()
     Path("build/reports").mkdir(parents=True, exist_ok=True)
-    rep = run_audit(s.NEO4J_URI, s.NEO4J_USER, s.NEO4J_PASSWORD)
+    report = run_audit(s.NEO4J_URI, s.NEO4J_USER, s.NEO4J_PASSWORD)
     dst = f"build/reports/ontology_audit_{int(time.time())}.json"
     with open(dst, "w", encoding="utf-8") as f:
-        json.dump(rep, f, ensure_ascii=False, indent=2)
-    jlog("info", "audit_done", path=dst)
-    return {"ok": True, "saved": dst, "report": rep}
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    jlog("info", "audit_done", path=dst, ok=report.get("ok"))
+    return {"ok": True, "saved": dst, "report": report}
 
-@app.get("/repo")
-def repo_info():
+
+@app.get("/repo", response_class=JSONResponse)
+def repo_info() -> Dict[str, Any]:
+    """Thông tin báo cáo gần nhất."""
     report_dir = Path("build/reports")
-    reports = sorted(report_dir.glob("ontology_audit_*.json"),
-                     key=os.path.getmtime, reverse=True)
-    if not reports: 
+    reports = sorted(
+        report_dir.glob("ontology_audit_*.json"),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    if not reports:
         return {"ok": False, "message": "no reports yet"}
     latest = reports[0]
-    with open(latest,"r",encoding="utf-8") as f: data = json.load(f)
-    return {"ok": True, "latest": str(latest), "summary": data.get("summary",{})}
+    data: Dict[str, Any] = {}
+    try:
+        with open(latest, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return {"ok": False, "latest": str(latest), "error": str(e)}
+    return {"ok": True, "latest": str(latest), "summary": data.get("summary") or data}
+
 
 @app.get("/dlq/tail")
-def tail_dlq(n: int = 10):
+def tail_dlq(n: int = 10) -> Dict[str, Any]:
+    """Đọc N bản ghi mới nhất từ DLQ (best-effort)."""
     s = Settings.load()
     topic = f"{s.TOPIC_GRAPHOPS}.dlq.v1"
-    c = None
-    msgs = []
-    try:
-        c = Consumer({
+
+    c = Consumer(
+        {
             "bootstrap.servers": s.KAFKA_BOOTSTRAP_SERVERS,
             "group.id": f"dlq-tail-{int(time.time())}",
             "auto.offset.reset": "latest",
             "enable.auto.commit": False,
-        })
-        c.subscribe([topic])
-        start = time.time()
-        while len(msgs) < n and time.time() - start < 5:
-            m = c.poll(0.5)
-            if not m:
-                continue
-            if m.error():
-                # Bỏ qua lỗi lặt vặt; có thể điền m.error().str() nếu muốn
-                continue
-            msgs.append({
-                "ts": int((m.timestamp() or (0,0))[1] or 0),
+        }
+    )
+    c.subscribe([topic])
+
+    msgs = []
+    start = time.time()
+    while len(msgs) < n and time.time() - start < 5:
+        m = c.poll(0.5)
+        if not m:
+            continue
+        if m.error():
+            continue
+        msgs.append(
+            {
+                "ts": int((m.timestamp() or (0, 0))[1] or 0),
                 "headers": dict(m.headers() or []),
                 "value": m.value().decode("utf-8", "replace"),
-            })
-        return {"ok": True, "topic": topic, "count": len(msgs), "messages": msgs}
-    except Exception as e:
-        return {"ok": False, "topic": topic, "error": str(e), "messages": []}
-    finally:
-        if c is not None:
-            try: c.close()
-            except Exception: pass
+            }
+        )
+    c.close()
+    return {"ok": True, "topic": topic, "count": len(msgs), "messages": msgs}
+
 
 @app.get("/stream/logs")
-async def stream_logs():
-    """Simple SSE streamer reading tail -f from loop.log."""
+async def stream_logs() -> StreamingResponse:
+    """SSE stream tail file loop.log (thích hợp gắn vào UI)."""
+
     async def gen():
         log_path = Path("loop.log")
         pos = 0
         while True:
             if not log_path.exists():
-                yield f"data: waiting log...\n\n"; await asyncio.sleep(2); continue
-            with open(log_path) as f:
+                yield "data: waiting log...\n\n"
+                await asyncio.sleep(2)
+                continue
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                 f.seek(pos)
-                lines=f.readlines()
-                pos=f.tell()
-            for ln in lines[-5:]:
-                yield f"data: {ln.strip()}\n\n"
-            await asyncio.sleep(2)
+                lines = f.readlines()
+                pos = f.tell()
+            for ln in lines[-50:]:
+                yield f"data: {ln.rstrip()}\n\n"
+            await asyncio.sleep(1)
+
     return StreamingResponse(gen(), media_type="text/event-stream")
 
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard():
-    p = Path("tools/monitor/dashboard.html")
-    if p.exists():
-        return HTMLResponse(p.read_text(encoding="utf-8"))
-    # Fallback tối thiểu
-    return HTMLResponse("<h1>Ontology GraphOps Monitor</h1><p>dashboard.html not found.</p>")
-# --- đầu file bạn đã có ---
-#!/usr/bin/env python3
-import asyncio
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-import os, json, time, shlex
-from pathlib import Path
-from typing import Any, Dict
-from confluent_kafka import Consumer
-from common.env import Settings
-from common.diagnostics import kafka_admin, ensure_topic, check_neo4j
-from tools.ontology.audit_integrity import audit as run_audit
-from neo4j import GraphDatabase
-
-APP_NAME = "Ontology GraphOps Monitor Pro"
-app = FastAPI(title=APP_NAME, version="0.3.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
-)
-
-def jlog(level: str, msg: str, **extra: Any):
-    print(json.dumps({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "level": level, "module": "monitor_api", "msg": msg, "extra": extra
-    }))
-
-# ============================================================
-# OPS STREAMERS (chạy lệnh và stream log ra UI)
-# ============================================================
-
-async def _stream_shell(cmd: str):
-    """Run shell command and stream combined stdout/stderr as SSE."""
-    yield f"data: $ {cmd}\n\n"
-    proc = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=os.environ.copy(),
-    )
-    assert proc.stdout is not None
-    async for raw in proc.stdout:
-        line = raw.decode("utf-8", "replace").rstrip("\n")
-        yield f"data: {line}\n\n"
-    rc = await proc.wait()
-    yield f"data: [exit={rc}]\n\n"
-
-@app.get("/ops/diagnose/stream")
-def ops_diagnose_stream():
-    """Stream `make diagnose`."""
-    return StreamingResponse(_stream_shell("make diagnose"), media_type="text/event-stream")
-
-@app.get("/ops/emit/stream")
-def ops_emit_stream():
-    """Stream `make emit` (đọc ONTOLOGY_FILE từ .env)."""
-    settings = Settings.load()
-    cmd = f"make emit ONTOLOGY_FILE='{settings.ONTOLOGY_FILE}'"
-    return StreamingResponse(_stream_shell(cmd), media_type="text/event-stream")
-
-@app.get("/ops/consume-once/stream")
-def ops_consume_once_stream():
-    """Stream chạy consumer one-shot."""
-    gid = f"ontology-consumer-once-{int(time.time())}"
-    cmd = (
-        "python -m services.ontology.ontology_consumer "
-        "--json --once --idle-timeout-sec 3 --auto-offset-reset earliest "
-        f"--group-id '{gid}'"
-    )
-    return StreamingResponse(_stream_shell(cmd), media_type="text/event-stream")
-
-# ============================================================
-# (giữ nguyên các helper và route health/counts/audit/repo/dlq/stream/dashboard/root)
-# ============================================================
-
-# ... phần health(), counts(), audit(), repo_info(), tail_dlq(), stream_logs() giữ nguyên ...
 
 @app.get("/dashboard", response_class=HTMLResponse)
-def dashboard():
+def dashboard() -> HTMLResponse:
+    """Render giao diện HTML tách riêng file."""
     html = Path("tools/monitor/dashboard.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
+
 @app.get("/")
-def root():
-    return {"app": APP_NAME, "endpoints": [
-        "/health","/counts","/audit","/repo","/dlq/tail","/stream/logs",
-        "/ops/diagnose/stream","/ops/emit/stream","/ops/consume-once/stream",
-        "/dashboard"
-    ]}
+def root() -> Dict[str, Any]:
+    """Info root."""
+    return {
+        "app": APP_NAME,
+        "version": VERSION,
+        "endpoints": [
+            "/health",
+            "/counts",
+            "/audit",
+            "/repo",
+            "/dlq/tail",
+            "/stream/logs",
+            "/dashboard",
+        ],
+        "env": {
+            "topic": os.getenv("TOPIC_GRAPHOPS", "legal-ontology-graphops"),
+            "neo4j_uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        },
+    }
+
+
+# (tuỳ chọn) Banner khi startup để dễ nhận biết đúng bản
+@app.on_event("startup")
+async def _banner() -> None:
+    jlog("info", "startup", app=APP_NAME, version=VERSION)
 

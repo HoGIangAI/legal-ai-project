@@ -2,74 +2,94 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <title>Ontology GraphOps Monitor</title>
+  <title>Ontology GraphOps Monitor Pro</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { margin: 24px; background: #0b1020; color: #e8eefc; }
-    .grid { display: grid; grid-template-columns: repeat(3, minmax(260px, 1fr)); gap: 16px; }
+    body { margin: 18px; background: #0b1020; color: #e8eefc; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 16px; }
     .card { background: #121833; border: 1px solid #24325f; border-radius: 14px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
-    h1 { margin: 0 0 12px; font-size: 22px; }
-    h2 { margin: 0 0 12px; font-size: 18px; color: #a8c1ff; }
-    pre { background: #0f1530; padding: 12px; border-radius: 10px; overflow: auto; max-height: 320px; }
+    h1 { margin: 0 0 16px; font-size: 22px; }
+    h2 { margin: 0 0 12px; font-size: 16px; color: #a8c1ff; }
+    pre { background: #0f1530; padding: 10px; border-radius: 10px; overflow: auto; max-height: 260px;}
     .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    button { background: #2a6dfb; color: white; border: 0; padding: 10px 14px; border-radius: 10px; cursor: pointer; }
+    button { background: #2a6dfb; color: white; border: 0; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    .ok { color: #87f59a; font-weight: 600; }
-    .bad { color: #ff7b7b; font-weight: 600; }
-    .stat { font-size: 28px; font-weight: 700; }
+    .ok { color: #87f59a; font-weight: 700; }
+    .bad { color: #ff7b7b; font-weight: 700; }
+    .stat { font-size: 28px; font-weight: 800; }
     .muted { opacity: .75; }
     a { color: #9ec3ff; }
+    #logs { min-height: 200px; max-height: 320px; }
+    .kpi { display:grid; grid-template-columns: repeat(2,1fr); gap:12px; margin-top: 8px;}
+    .kpi > div{ background:#0f1530; padding:10px 12px; border-radius:10px;}
   </style>
 </head>
 <body>
-  <h1>Ontology GraphOps Monitor</h1>
+  <h1>Ontology GraphOps Monitor Pro</h1>
 
   <div class="grid">
-    <div class="card" id="card-health">
+    <!-- Health -->
+    <div class="card">
       <h2>Health</h2>
       <div class="row">
         <div>Overall:&nbsp;<span id="health-ok" class="muted">...</span></div>
         <button id="btn-refresh-health">Refresh</button>
       </div>
-      <pre id="health-json">Đang tải...</pre>
+      <pre id="health-json">{ "loading": true }</pre>
     </div>
 
-    <div class="card" id="card-counts">
+    <!-- Counts -->
+    <div class="card">
       <h2>Counts</h2>
       <div class="row">
         <button id="btn-refresh-counts">Refresh</button>
         <label class="muted"><input type="checkbox" id="auto-refresh" /> Auto refresh (5s)</label>
       </div>
-      <div class="grid" style="grid-template-columns: repeat(2,1fr); gap: 12px; margin-top: 8px;">
+      <div class="kpi">
         <div><div class="muted">LawArticle</div><div id="c-article" class="stat">-</div></div>
         <div><div class="muted">LawConcept</div><div id="c-concept" class="stat">-</div></div>
         <div><div class="muted">LawEntity</div><div id="c-entity" class="stat">-</div></div>
         <div><div class="muted">REFERS_TO</div><div id="c-refers" class="stat">-</div></div>
       </div>
-      <pre id="counts-json" style="margin-top: 12px;">Đang tải...</pre>
+      <pre id="counts-json" style="margin-top: 8px;">{ "loading": true }</pre>
     </div>
 
-    <div class="card" id="card-audit">
+    <!-- Audit -->
+    <div class="card">
       <h2>Audit</h2>
       <div class="row">
         <button id="btn-run-audit">Run Audit</button>
         <span id="audit-status" class="muted">Chưa chạy</span>
       </div>
-      <pre id="audit-json" style="margin-top: 10px;">(click Run Audit)</pre>
-      <div class="muted" style="margin-top: 8px;">Báo cáo lưu tại <code>build/reports/ontology_audit_*.json</code></div>
+      <pre id="audit-json" style="margin-top: 8px;">(click Run Audit)</pre>
+      <div class="muted" style="margin-top: 6px;">Báo cáo lưu tại <code>build/reports/ontology_audit_*.json</code></div>
+    </div>
+
+    <!-- Repo summary -->
+    <div class="card">
+      <h2>Repo Summary</h2>
+      <div class="row">
+        <button id="btn-refresh-repo">Refresh</button>
+      </div>
+      <pre id="repo-json">{ "loading": true }</pre>
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <h2>Ops</h2>
-    <div class="row">
-      <button id="btn-diagnose">Diagnose</button>
-      <button id="btn-emit">Emit</button>
-      <button id="btn-consume">Consume Once</button>
-      <span class="muted">SSE stream</span>
+  <!-- DLQ + Ops -->
+  <div class="grid" style="grid-template-columns: 1fr 3fr; margin-top:16px;">
+    <div class="card">
+      <h2>DLQ Viewer</h2>
+      <div class="row">
+        <button id="btn-tail-dlq">Tail DLQ</button>
+      </div>
+      <pre id="dlq-json">Chưa có dữ liệu</pre>
     </div>
-    <pre id="ops-log">(nhấn nút để xem log)</pre>
+
+    <div class="card">
+      <h2>Realtime Logs</h2>
+      <pre id="logs">(SSE) /stream/logs...</pre>
+    </div>
   </div>
 
   <div class="card" style="margin-top:16px">
@@ -77,8 +97,8 @@
       <span class="muted">API:</span>
       <a href="/health" target="_blank">/health</a>
       <a href="/counts" target="_blank">/counts</a>
+      <a href="/repo" target="_blank">/repo</a>
       <a href="/dlq/tail" target="_blank">/dlq/tail</a>
-      <a href="/stream/logs" target="_blank">/stream/logs</a>
       <a href="/docs" target="_blank">/docs</a>
     </div>
   </div>
@@ -86,32 +106,35 @@
 <script>
 const $ = (sel) => document.querySelector(sel);
 
+// ---- Health ----
 async function loadHealth() {
   $("#health-ok").textContent = "...";
   $("#health-ok").className = "muted";
   const res = await fetch("/health");
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ok:false, error:"fetch failed"}));
   $("#health-json").textContent = JSON.stringify(data, null, 2);
   $("#health-ok").textContent = data.ok ? "OK" : "FAIL";
   $("#health-ok").className = data.ok ? "ok" : "bad";
 }
 
+// ---- Counts ----
 async function loadCounts() {
   const res = await fetch("/counts");
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ok:false, counts:{}}));
   const c = data.counts || {};
   $("#c-article").textContent = c.LawArticle ?? "-";
   $("#c-concept").textContent = c.LawConcept ?? "-";
-  $("#c-entity").textContent = c.LawEntity ?? "-";
-  $("#c-refers").textContent = c.REFERS_TO ?? "-";
+  $("#c-entity").textContent  = c.LawEntity  ?? "-";
+  $("#c-refers").textContent  = c.REFERS_TO  ?? "-";
   $("#counts-json").textContent = JSON.stringify(data, null, 2);
 }
 
+// ---- Audit ----
 async function runAudit() {
   $("#btn-run-audit").disabled = true;
   $("#audit-status").textContent = "Đang chạy...";
   const res = await fetch("/audit", {method:"POST"});
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ok:false}));
   $("#audit-json").textContent = JSON.stringify(data.report || data, null, 2);
   const ok = (data.report && data.report.ok) || data.ok;
   $("#audit-status").textContent = ok ? "OK" : "ISSUES FOUND";
@@ -119,37 +142,51 @@ async function runAudit() {
   $("#btn-run-audit").disabled = false;
 }
 
-function startSSE(url) {
-  const out = $("#ops-log");
-  out.textContent = "";
-  const es = new EventSource(url);
-  es.onmessage = (ev) => {
-    out.textContent += ev.data + "\n";
-    out.scrollTop = out.scrollHeight;
-  };
-  es.onerror = () => {
-    es.close();
-  };
-  return es;
+// ---- Repo ----
+async function loadRepo() {
+  const res = await fetch("/repo");
+  const data = await res.json().catch(() => ({ok:false}));
+  $("#repo-json").textContent = JSON.stringify(data, null, 2);
 }
 
+// ---- DLQ ----
+async function tailDLQ() {
+  const res = await fetch("/dlq/tail?n=10");
+  const data = await res.json().catch(() => ({ok:false}));
+  $("#dlq-json").textContent = JSON.stringify(data, null, 2);
+}
+
+// ---- SSE logs ----
+let evt = null;
+function startSSE() {
+  if (evt) evt.close();
+  evt = new EventSource("/stream/logs");
+  const box = $("#logs");
+  evt.onmessage = (e) => {
+    box.textContent += (e.data || "") + "\n";
+    box.scrollTop = box.scrollHeight;
+  };
+  evt.onerror = () => { /* giữ kết nối, SSE tự reconnect */ };
+}
+
+// bindings
 $("#btn-refresh-health").addEventListener("click", loadHealth);
 $("#btn-refresh-counts").addEventListener("click", loadCounts);
 $("#btn-run-audit").addEventListener("click", runAudit);
+$("#btn-refresh-repo").addEventListener("click", loadRepo);
+$("#btn-tail-dlq").addEventListener("click", tailDLQ);
 
 let timer = null;
 $("#auto-refresh").addEventListener("change", (e) => {
-  if (e.target.checked) timer = setInterval(loadCounts, 5000);
-  else { clearInterval(timer); timer = null; }
+  if (e.target.checked) {
+    timer = setInterval(loadCounts, 5000);
+  } else {
+    clearInterval(timer); timer = null;
+  }
 });
 
-// New: buttons for Ops
-let es = null;
-$("#btn-diagnose").addEventListener("click", () => { if (es) es.close(); es = startSSE("/ops/diagnose/stream"); });
-$("#btn-emit").addEventListener("click", () => { if (es) es.close(); es = startSSE("/ops/emit/stream"); });
-$("#btn-consume").addEventListener("click", () => { if (es) es.close(); es = startSSE("/ops/consume-once/stream"); });
-
-loadHealth(); loadCounts();
+// initial
+loadHealth(); loadCounts(); loadRepo(); startSSE();
 </script>
 </body>
 </html>
