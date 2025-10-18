@@ -118,5 +118,6 @@ verify: audit
 diagnose:
 	@$(call RUN_IN_VENV,common.diagnostics,--json)
 ui:
-	@$(call RUN_IN_VENV,uvicorn,tools.monitor.api:app --host 0.0.0.0 --port 8088 --reload)
+	@echo "🚀 Starting GraphOps Monitor Pro UI..."
+	. .venv/bin/activate && uvicorn tools.monitor.api:app --host 0.0.0.0 --port 8088 --reload
 
