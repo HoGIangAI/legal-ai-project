@@ -8,7 +8,7 @@ MODULE, stop_flag = "ontology_consumer", False
 
 def jlog(level, msg, error_code=0, hint=None, extra=None):
     print(json.dumps({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "level": level, "module": MODULE, "msg": msg,
         "error_code": error_code, "hint": hint, "extra": extra or {}
     }))
@@ -79,36 +79,73 @@ def _wrap_if_top_level(obj: dict) -> dict:
         return obj
     return {"correlation_id": obj.get("correlation_id", str(uuid.uuid4())), "data": obj}
 
+
+def _pick_label(obj: dict) -> str | None:
+    # labels (list) ưu tiên, sau đó label (string)
+    labs = obj.get("labels")
+    if isinstance(labs, list) and labs:
+        return str(labs[0])
+    lab = obj.get("label")
+    if isinstance(lab, str) and lab.strip():
+        return lab.strip()
+    return None
+
+def _pick_id(obj: dict) -> str | None:
+    if obj.get("id") is not None:
+        return str(obj["id"])
+    props = obj.get("props") or {}
+    if props.get("id") is not None:
+        return str(props["id"])
+    return None
+
+def _normalize_edge_loose(e: dict) -> dict:
+    # Cho phép cả normalized lẫn input; cố gắng "khoan dung" với field lệch.
+    et = e.get("type") or ((e.get("props") or {}).get("type"))
+    if {"src_label","dst_label","src_id","dst_id"}.issubset(e.keys()) and et:
+        return {
+            "type": str(et),
+            "src_label": str(e["src_label"]), "src_id": str(e["src_id"]),
+            "dst_label": str(e["dst_label"]), "dst_id": str(e["dst_id"]),
+            "props": e.get("props") or {}
+        }
+    fin = e.get("from") or e.get("from_") or {}
+    to  = e.get("to")   or {}
+    sl = _pick_label(fin)
+    dl = _pick_label(to)
+    sid = _pick_id(fin)
+    did = _pick_id(to)
+    missing = [k for k,v in {
+        "type": et, "src_label": sl, "dst_label": dl, "src_id": sid, "dst_id": did
+    }.items() if not v]
+    if missing:
+        raise ValueError(f"edge missing fields: {','.join(missing)}")
+    return {
+        "type": str(et),
+        "src_label": str(sl or "Unknown"),
+        "src_id": str(sid),
+        "dst_label": str(dl or "Unknown"),
+        "dst_id": str(did),
+        "props": e.get("props") or {}
+    }
+
 def normalize_record(payload: dict) -> dict:
     d = payload.get("data", {})
     if "node" in d:
         n = d["node"]
-        label = n.get("label") or (n.get("labels") or [None])[0]
+        label = n.get("label") or (n.get("labels") or [None])[0] or n.get("props",{}).get("label")
         nid = n.get("id") or (n.get("props") or {}).get("id")
         if not label or not nid:
             raise ValueError("node missing label/id")
         return {"kind": "node", "label": str(label), "id": str(nid), "props": n.get("props") or {}}
     if "edge" in d:
         e = d["edge"]
-        et = e.get("type")
-        sl, dl, sid, did = e.get("src_label"), e.get("dst_label"), e.get("src_id"), e.get("dst_id")
-        if not all([sl, dl, sid, did, et]):
-            fin, to = e.get("from", {}), e.get("to", {})
-            sl = (fin.get("labels") or [None])[0] or sl
-            dl = (to.get("labels") or [None])[0] or dl
-            sid = fin.get("id") or sid
-            did = to.get("id") or did
-        if not all([sl, dl, sid, did, et]):
-            raise ValueError("edge missing normalized endpoints/type")
-        return {"kind": "edge",
-                "src_label": str(sl), "src_id": str(sid),
-                "dst_label": str(dl), "dst_id": str(did),
-                "type": str(et), "props": e.get("props") or {}}
+        en = _normalize_edge_loose(e)
+        return {"kind": "edge", **en}
     raise ValueError("unknown record kind")
 
 def _send_dlq(prod: Producer, topic: str, raw: bytes, reason: str):
     try:
-        prod.produce(topic, value=raw, headers={"x-reason": reason})
+        prod.produce(topic, value=raw, headers={"x-reason": reason, "x-correlation-id": corr})
     except Exception as e:
         jlog("error", "dlq_produce_failed", 3, "Check Kafka", {"exc": str(e)})
 
@@ -204,6 +241,7 @@ def main():
 
             try:
                 obj = json.loads(raw.decode("utf-8"))
+                corr = obj.get("correlation_id") or str(uuid.uuid4())
                 rec = normalize_record(_wrap_if_top_level(obj))
                 with driver.session() as s:
                     if rec["kind"] == "node":
@@ -211,12 +249,12 @@ def main():
                     else:
                         s.execute_write(upsert_edge, rec["src_label"], rec["src_id"],
                                         rec["dst_label"], rec["dst_id"], rec["type"], rec["props"])
-                jlog("info", "upsert_ok", extra={"kind": rec["kind"]})
+                jlog("info", "upsert_ok", extra={"kind": rec["kind"], "correlation_id": corr})
                 cons.commit(message=msg, asynchronous=False)
                 jlog("debug", "commit_ok")
             except Exception as e:
                 reason = str(e)
-                jlog("error", "process_failed", 5, "Record moved to DLQ & quarantine", {"exc": reason})
+                jlog("error", "process_failed", 5, "Record moved to DLQ & quarantine", {"exc": reason, "correlation_id": corr})
                 if prod is not None:
                     _send_dlq(prod, dlq, raw, reason)
                 _quarantine(cfg["quarantine_dir"], raw, reason)
