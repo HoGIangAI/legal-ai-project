@@ -2,151 +2,154 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <title>Ontology GraphOps Monitor Pro</title>
+  <title>Ontology GraphOps Monitor</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     body { margin: 24px; background: #0b1020; color: #e8eefc; }
-    h1 { font-size: 24px; margin-bottom: 16px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-    .card { background: #121833; border: 1px solid #24325f; border-radius: 12px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
-    button { background: #2a6dfb; color: white; border: 0; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(260px, 1fr)); gap: 16px; }
+    .card { background: #121833; border: 1px solid #24325f; border-radius: 14px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
+    h1 { margin: 0 0 12px; font-size: 22px; }
+    h2 { margin: 0 0 12px; font-size: 18px; color: #a8c1ff; }
+    pre { background: #0f1530; padding: 12px; border-radius: 10px; overflow: auto; max-height: 320px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button { background: #2a6dfb; color: white; border: 0; padding: 10px 14px; border-radius: 10px; cursor: pointer; }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    pre { background: #0f1530; padding: 10px; border-radius: 10px; overflow: auto; font-size: 13px; }
-    .ok { color: #7efba2; font-weight: bold; }
-    .bad { color: #ff7b7b; font-weight: bold; }
-    .muted { opacity: 0.7; }
+    .ok { color: #87f59a; font-weight: 600; }
+    .bad { color: #ff7b7b; font-weight: 600; }
+    .stat { font-size: 28px; font-weight: 700; }
+    .muted { opacity: .75; }
+    a { color: #9ec3ff; }
   </style>
 </head>
 <body>
-  <h1>Ontology GraphOps Monitor Pro</h1>
+  <h1>Ontology GraphOps Monitor</h1>
+
   <div class="grid">
     <div class="card" id="card-health">
       <h2>Health</h2>
-      <div>Overall: <span id="health-ok" class="muted">...</span> <button id="btn-refresh-health">Refresh</button></div>
+      <div class="row">
+        <div>Overall:&nbsp;<span id="health-ok" class="muted">...</span></div>
+        <button id="btn-refresh-health">Refresh</button>
+      </div>
       <pre id="health-json">Đang tải...</pre>
     </div>
 
     <div class="card" id="card-counts">
       <h2>Counts</h2>
-      <canvas id="countChart" height="200"></canvas>
-      <div style="margin-top:8px;">
+      <div class="row">
         <button id="btn-refresh-counts">Refresh</button>
-        <label class="muted"><input type="checkbox" id="auto-refresh"> Auto refresh (5s)</label>
+        <label class="muted"><input type="checkbox" id="auto-refresh" /> Auto refresh (5s)</label>
       </div>
-      <pre id="counts-json"></pre>
+      <div class="grid" style="grid-template-columns: repeat(2,1fr); gap: 12px; margin-top: 8px;">
+        <div><div class="muted">LawArticle</div><div id="c-article" class="stat">-</div></div>
+        <div><div class="muted">LawConcept</div><div id="c-concept" class="stat">-</div></div>
+        <div><div class="muted">LawEntity</div><div id="c-entity" class="stat">-</div></div>
+        <div><div class="muted">REFERS_TO</div><div id="c-refers" class="stat">-</div></div>
+      </div>
+      <pre id="counts-json" style="margin-top: 12px;">Đang tải...</pre>
     </div>
 
     <div class="card" id="card-audit">
       <h2>Audit</h2>
-      <button id="btn-run-audit">Run Audit</button>
-      <span id="audit-status" class="muted">Chưa chạy</span>
-      <pre id="audit-json">(click Run Audit)</pre>
-    </div>
-
-    <div class="card" id="card-repo">
-      <h2>Repo Summary</h2>
-      <button id="btn-refresh-repo">Refresh</button>
-      <pre id="repo-json"></pre>
-    </div>
-
-    <div class="card" id="card-dlq">
-      <h2>DLQ Viewer</h2>
-      <button id="btn-tail-dlq">Tail DLQ</button>
-      <pre id="dlq-json"></pre>
-    </div>
-
-    <div class="card" id="card-emit">
-      <h2>Emit Sample Event</h2>
-      <button id="btn-emit-sample">Emit Sample</button>
-      <pre id="emit-result" class="muted">(chưa gửi)</pre>
+      <div class="row">
+        <button id="btn-run-audit">Run Audit</button>
+        <span id="audit-status" class="muted">Chưa chạy</span>
+      </div>
+      <pre id="audit-json" style="margin-top: 10px;">(click Run Audit)</pre>
+      <div class="muted" style="margin-top: 8px;">Báo cáo lưu tại <code>build/reports/ontology_audit_*.json</code></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top: 16px;">
-    <h2>Realtime Logs</h2>
-    <pre id="log-view" style="max-height: 260px;"></pre>
+  <div class="card" style="margin-top:16px">
+    <h2>Ops</h2>
+    <div class="row">
+      <button id="btn-diagnose">Diagnose</button>
+      <button id="btn-emit">Emit</button>
+      <button id="btn-consume">Consume Once</button>
+      <span class="muted">SSE stream</span>
+    </div>
+    <pre id="ops-log">(nhấn nút để xem log)</pre>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="row">
+      <span class="muted">API:</span>
+      <a href="/health" target="_blank">/health</a>
+      <a href="/counts" target="_blank">/counts</a>
+      <a href="/dlq/tail" target="_blank">/dlq/tail</a>
+      <a href="/stream/logs" target="_blank">/stream/logs</a>
+      <a href="/docs" target="_blank">/docs</a>
+    </div>
   </div>
 
 <script>
-const $ = s => document.querySelector(s);
-let chart = null;
+const $ = (sel) => document.querySelector(sel);
 
 async function loadHealth() {
-  const res = await fetch("/health"); const data = await res.json();
+  $("#health-ok").textContent = "...";
+  $("#health-ok").className = "muted";
+  const res = await fetch("/health");
+  const data = await res.json();
   $("#health-json").textContent = JSON.stringify(data, null, 2);
   $("#health-ok").textContent = data.ok ? "OK" : "FAIL";
   $("#health-ok").className = data.ok ? "ok" : "bad";
 }
 
 async function loadCounts() {
-  const res = await fetch("/counts"); const data = await res.json();
-  $("#counts-json").textContent = JSON.stringify(data, null, 2);
+  const res = await fetch("/counts");
+  const data = await res.json();
   const c = data.counts || {};
-  const vals = [c.LawArticle||0, c.LawConcept||0, c.LawEntity||0, c.REFERS_TO||0];
-  const labels = ["LawArticle","LawConcept","LawEntity","REFERS_TO"];
-  if (!chart) {
-    chart = new Chart($("#countChart"), {
-      type: "bar",
-      data: { labels, datasets: [{ label: "Node Counts", data: vals, borderWidth: 1 }] },
-      options: { scales: { y: { beginAtZero: true } } }
-    });
-  } else {
-    chart.data.datasets[0].data = vals;
-    chart.update();
-  }
+  $("#c-article").textContent = c.LawArticle ?? "-";
+  $("#c-concept").textContent = c.LawConcept ?? "-";
+  $("#c-entity").textContent = c.LawEntity ?? "-";
+  $("#c-refers").textContent = c.REFERS_TO ?? "-";
+  $("#counts-json").textContent = JSON.stringify(data, null, 2);
 }
 
 async function runAudit() {
   $("#btn-run-audit").disabled = true;
-  const res = await fetch("/audit",{method:"POST"}); const data = await res.json();
-  $("#audit-json").textContent = JSON.stringify(data, null, 2);
-  $("#audit-status").textContent = data.ok ? "OK" : "ISSUES";
-  $("#audit-status").className = data.ok ? "ok" : "bad";
+  $("#audit-status").textContent = "Đang chạy...";
+  const res = await fetch("/audit", {method:"POST"});
+  const data = await res.json();
+  $("#audit-json").textContent = JSON.stringify(data.report || data, null, 2);
+  const ok = (data.report && data.report.ok) || data.ok;
+  $("#audit-status").textContent = ok ? "OK" : "ISSUES FOUND";
+  $("#audit-status").className = ok ? "ok" : "bad";
   $("#btn-run-audit").disabled = false;
 }
 
-async function loadRepo() {
-  const res = await fetch("/repo"); const data = await res.json();
-  $("#repo-json").textContent = JSON.stringify(data, null, 2);
+function startSSE(url) {
+  const out = $("#ops-log");
+  out.textContent = "";
+  const es = new EventSource(url);
+  es.onmessage = (ev) => {
+    out.textContent += ev.data + "\n";
+    out.scrollTop = out.scrollHeight;
+  };
+  es.onerror = () => {
+    es.close();
+  };
+  return es;
 }
 
-async function tailDLQ() {
-  const res = await fetch("/dlq/tail?n=5"); const data = await res.json();
-  $("#dlq-json").textContent = JSON.stringify(data, null, 2);
-}
+$("#btn-refresh-health").addEventListener("click", loadHealth);
+$("#btn-refresh-counts").addEventListener("click", loadCounts);
+$("#btn-run-audit").addEventListener("click", runAudit);
 
-async function emitSample() {
-  const res = await fetch("/emit/sample",{method:"POST"});
-  const data = await res.json();
-  $("#emit-result").textContent = JSON.stringify(data, null, 2);
-}
+let timer = null;
+$("#auto-refresh").addEventListener("change", (e) => {
+  if (e.target.checked) timer = setInterval(loadCounts, 5000);
+  else { clearInterval(timer); timer = null; }
+});
 
-async function tailLogs() {
-  try {
-    const res = await fetch("/stream/logs");
-    const reader = res.body.getReader(); const decoder = new TextDecoder();
-    while(true){ const {done, value}=await reader.read(); if(done) break;
-      $("#log-view").textContent += decoder.decode(value);
-      $("#log-view").scrollTop = $("#log-view").scrollHeight;
-    }
-  } catch(e){ console.error(e); }
-}
+// New: buttons for Ops
+let es = null;
+$("#btn-diagnose").addEventListener("click", () => { if (es) es.close(); es = startSSE("/ops/diagnose/stream"); });
+$("#btn-emit").addEventListener("click", () => { if (es) es.close(); es = startSSE("/ops/emit/stream"); });
+$("#btn-consume").addEventListener("click", () => { if (es) es.close(); es = startSSE("/ops/consume-once/stream"); });
 
-$("#btn-refresh-health").onclick = loadHealth;
-$("#btn-refresh-counts").onclick = loadCounts;
-$("#btn-run-audit").onclick = runAudit;
-$("#btn-refresh-repo").onclick = loadRepo;
-$("#btn-tail-dlq").onclick = tailDLQ;
-$("#btn-emit-sample").onclick = emitSample;
-
-$("#auto-refresh").onchange = e=>{
-  if(e.target.checked){ window.autoTimer=setInterval(loadCounts,5000);}
-  else clearInterval(window.autoTimer);
-};
-
-loadHealth(); loadCounts(); loadRepo(); tailLogs();
+loadHealth(); loadCounts();
 </script>
 </body>
 </html>

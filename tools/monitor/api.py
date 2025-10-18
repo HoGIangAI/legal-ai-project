@@ -188,4 +188,95 @@ def dashboard():
         return HTMLResponse(p.read_text(encoding="utf-8"))
     # Fallback tối thiểu
     return HTMLResponse("<h1>Ontology GraphOps Monitor</h1><p>dashboard.html not found.</p>")
+# --- đầu file bạn đã có ---
+#!/usr/bin/env python3
+import asyncio
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+import os, json, time, shlex
+from pathlib import Path
+from typing import Any, Dict
+from confluent_kafka import Consumer
+from common.env import Settings
+from common.diagnostics import kafka_admin, ensure_topic, check_neo4j
+from tools.ontology.audit_integrity import audit as run_audit
+from neo4j import GraphDatabase
+
+APP_NAME = "Ontology GraphOps Monitor Pro"
+app = FastAPI(title=APP_NAME, version="0.3.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
+)
+
+def jlog(level: str, msg: str, **extra: Any):
+    print(json.dumps({
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "level": level, "module": "monitor_api", "msg": msg, "extra": extra
+    }))
+
+# ============================================================
+# OPS STREAMERS (chạy lệnh và stream log ra UI)
+# ============================================================
+
+async def _stream_shell(cmd: str):
+    """Run shell command and stream combined stdout/stderr as SSE."""
+    yield f"data: $ {cmd}\n\n"
+    proc = await asyncio.create_subprocess_shell(
+        cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env=os.environ.copy(),
+    )
+    assert proc.stdout is not None
+    async for raw in proc.stdout:
+        line = raw.decode("utf-8", "replace").rstrip("\n")
+        yield f"data: {line}\n\n"
+    rc = await proc.wait()
+    yield f"data: [exit={rc}]\n\n"
+
+@app.get("/ops/diagnose/stream")
+def ops_diagnose_stream():
+    """Stream `make diagnose`."""
+    return StreamingResponse(_stream_shell("make diagnose"), media_type="text/event-stream")
+
+@app.get("/ops/emit/stream")
+def ops_emit_stream():
+    """Stream `make emit` (đọc ONTOLOGY_FILE từ .env)."""
+    settings = Settings.load()
+    cmd = f"make emit ONTOLOGY_FILE='{settings.ONTOLOGY_FILE}'"
+    return StreamingResponse(_stream_shell(cmd), media_type="text/event-stream")
+
+@app.get("/ops/consume-once/stream")
+def ops_consume_once_stream():
+    """Stream chạy consumer one-shot."""
+    gid = f"ontology-consumer-once-{int(time.time())}"
+    cmd = (
+        "python -m services.ontology.ontology_consumer "
+        "--json --once --idle-timeout-sec 3 --auto-offset-reset earliest "
+        f"--group-id '{gid}'"
+    )
+    return StreamingResponse(_stream_shell(cmd), media_type="text/event-stream")
+
+# ============================================================
+# (giữ nguyên các helper và route health/counts/audit/repo/dlq/stream/dashboard/root)
+# ============================================================
+
+# ... phần health(), counts(), audit(), repo_info(), tail_dlq(), stream_logs() giữ nguyên ...
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    html = Path("tools/monitor/dashboard.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
+
+@app.get("/")
+def root():
+    return {"app": APP_NAME, "endpoints": [
+        "/health","/counts","/audit","/repo","/dlq/tail","/stream/logs",
+        "/ops/diagnose/stream","/ops/emit/stream","/ops/consume-once/stream",
+        "/dashboard"
+    ]}
 
