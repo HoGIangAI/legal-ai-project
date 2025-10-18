@@ -1,0 +1,45 @@
+name: CI/CD for Feedback Service
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'src/feedback_service/**'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./src/feedback_service
+          file: ./src/feedback_service/Dockerfile
+          push: true
+          tags: your-docker-username/legal-ai-feedback-service:latest # Thay đổi username
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure Kubernetes context
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" > ~/.kube/config
+      
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/feedback-service-deployment.yaml
+          kubectl apply -f k8s/feedback-service-service.yaml

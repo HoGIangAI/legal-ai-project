@@ -1,0 +1,697 @@
+============================================================
+FILE: k8s/postgres-deployment.yaml
+LINES: 51 | SIZE: 0.97KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        env:
+        - name: POSTGRES_DB
+          value: "legal_rag"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+
+============================================================
+FILE: k8s/expert-platform-deployment.yaml
+LINES: 25 | SIZE: 0.53KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: expert-platform-deployment
+  labels:
+    app: expert-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: expert-platform
+  template:
+    metadata:
+      labels:
+        app: expert-platform
+    spec:
+      containers:
+      - name: expert-platform-worker
+        image: busybox:1.36expert-platform:latest # Thay đổi username của bạn
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka-service:29092"
+
+
+
+============================================================
+FILE: k8s/double-check-deployment.yaml
+LINES: 25 | SIZE: 0.51KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: double-check-deployment
+  labels:
+    app: double-check
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: double-check
+  template:
+    metadata:
+      labels:
+        app: double-check
+    spec:
+      containers:
+      - name: double-check-worker
+        image: busybox:1.36double-check:latest # Thay đổi username của bạn
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka-service:29092"
+
+
+
+============================================================
+FILE: k8s/prometheus-deployment.yaml
+LINES: 33 | SIZE: 0.79KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      # Gán ServiceAccount đã tạo ở bước RBAC
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.37.0
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+          ports:
+            - containerPort: 9090
+          # Mount file cấu hình từ ConfigMap vào trong container
+          volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus/
+      volumes:
+        - name: prometheus-config-volume
+          configMap:
+            name: prometheus-config
+
+
+
+============================================================
+FILE: k8s/traefik-deployment.yaml
+LINES: 29 | SIZE: 0.71KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik-service-account
+      containers:
+        - name: traefik
+          image: traefik:v2.9
+          args:
+            - --api.insecure=true # Kích hoạt dashboard trên port 8080
+            - --providers.kubernetescrd # Cho phép Traefik sử dụng CRD (IngressRoute)
+            - --entrypoints.web.address=:80 # Định nghĩa entrypoint HTTP trên port 80
+          ports:
+            - name: web
+              containerPort: 80
+            - name: admin
+              containerPort: 8080
+
+
+
+============================================================
+FILE: k8s/legal-ontology-deployment.yaml
+LINES: 50 | SIZE: 1.23KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legal-ontology-deployment
+  labels:
+    app: legal-ontology
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: legal-ontology
+  template:
+    metadata:
+      labels:
+        app: legal-ontology
+    spec:
+      containers:
+      - name: legal-ontology
+        image: busybox:1.36legal-ontology:latest # Thay đổi username của bạn
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8003
+        env:
+          - name: NEO4J_URI
+            value: "bolt://neo4j-service:7687" # Giả sử service Neo4j có tên này
+          # Lấy thông tin nhạy cảm từ Kubernetes Secrets
+          - name: NEO4J_USER
+            valueFrom:
+              secretKeyRef:
+                name: neo4j-secret
+                key: NEO4J_USER
+          - name: NEO4J_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: neo4j-secret
+                key: NEO4J_PASSWORD
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 20
+          periodSeconds: 25
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 10
+          periodSeconds: 15
+
+
+
+============================================================
+FILE: k8s/dlq-monitor-worker-deployment.yaml
+LINES: 32 | SIZE: 0.71KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dlq-monitor-worker-deployment
+  labels:
+    app: dlq-monitor-worker
+spec:
+  replicas: 1 # Chỉ cần 1 bản sao cho dịch vụ giám sát này
+  selector:
+    matchLabels:
+      app: dlq-monitor-worker
+  template:
+    metadata:
+      labels:
+        app: dlq-monitor-worker
+    spec:
+      containers:
+      - name: dlq-monitor-worker
+        image: busybox:1.36dlq-monitor-worker:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service:29092"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+
+
+
+============================================================
+FILE: k8s/grafana-deployment.yaml
+LINES: 30 | SIZE: 0.65KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:9.2.5
+        ports:
+        - containerPort: 3000
+        # Mount volume chứa file cấu hình data source
+        volumeMounts:
+        - name: grafana-datasources-volume
+          mountPath: /etc/grafana/provisioning/datasources
+      # Định nghĩa volume từ ConfigMap
+      volumes:
+      - name: grafana-datasources-volume
+        configMap:
+          name: grafana-datasources
+
+
+
+============================================================
+FILE: k8s/intent-system-deployment.yaml
+LINES: 70 | SIZE: 1.79KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intent-system-deployment
+  labels:
+    app: intent-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: intent-system
+  template:
+    metadata:
+      labels:
+        app: intent-system
+      # Annotations để Prometheus có thể tự động khám phá
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: '/metrics'
+        prometheus.io/port: '8001'
+    spec:
+      containers:
+      - name: intent-system
+        image: busybox:1.36intent-system:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8001
+        # --- CẬP NHẬT: THÊM CÁC BIẾN MÔI TRƯỜNG ---
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service:29092"
+        - name: POSTGRES_HOST
+          value: "postgres-service" # Giả sử tên service của Postgres là postgres-service
+        - name: POSTGRES_DB
+          value: "legal_rag"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        # --- KẾT THÚC CẬP NHẬT ---
+        # Cấu hình tài nguyên
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        # Health probes để K8s tự động kiểm tra sức khỏe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+
+
+
+============================================================
+FILE: k8s/semantic-chunker-deployment.yaml
+LINES: 39 | SIZE: 0.91KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semantic-chunker-deployment
+  labels:
+    app: semantic-chunker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: semantic-chunker
+  template:
+    metadata:
+      labels:
+        app: semantic-chunker
+      # annotations: # Sẽ thêm sau để tích hợp Prometheus
+      #   prometheus.io/scrape: 'true'
+      #   prometheus.io/port: '8002'
+    spec:
+      containers:
+      - name: semantic-chunker
+        image: busybox:1.36semantic-chunker:latest # Thay đổi username của bạn
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8002
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+
+
+============================================================
+FILE: k8s/loki-deployment.yaml
+LINES: 36 | SIZE: 0.68KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+      - name: loki
+        image: grafana/loki:2.8.0
+        args:
+        - -config.file=/etc/loki/loki.yaml
+        ports:
+        - containerPort: 3100
+        volumeMounts:
+        - name: config
+          mountPath: /etc/loki/
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: config
+        configMap:
+          name: loki-config
+
+
+============================================================
+FILE: k8s/prometheus-pushgateway-deployment.yaml
+LINES: 23 | SIZE: 0.43KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-pushgateway-deployment
+  labels:
+    app: prometheus-pushgateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-pushgateway
+  template:
+    metadata:
+      labels:
+        app: prometheus-pushgateway
+    spec:
+      containers:
+      - name: prometheus-pushgateway
+        image: prom/pushgateway:v1.5.1
+        ports:
+        - containerPort: 9091
+
+
+
+============================================================
+FILE: k8s/neo4j-deployment.yaml
+LINES: 51 | SIZE: 0.9KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neo4j-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      containers:
+      - name: neo4j
+        image: neo4j:5.13
+        env:
+        - name: NEO4J_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-secret
+              key: auth
+        - name: NEO4J_PLUGINS
+          value: "[\"apoc\"]"
+        ports:
+        - containerPort: 7474
+        - containerPort: 7687
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j-service
+spec:
+  selector:
+    app: neo4j
+  ports:
+  - name: http
+    port: 7474
+    targetPort: 7474
+  - name: bolt
+    port: 7687
+    targetPort: 7687
+
+
+============================================================
+FILE: k8s/keycloak-deployment.yaml
+LINES: 38 | SIZE: 0.89KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak-deployment
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:21.1.1
+          args: ["start-dev"] # Sử dụng start-dev cho môi trường thử nghiệm
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: "admin" # Thay bằng secret
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: "admin" # Thay bằng secret
+            - name: KC_PROXY
+              value: "edge"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /realms/master
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+
+
+============================================================
+FILE: k8s/feedback-service-deployment.yaml
+LINES: 42 | SIZE: 1.06KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feedback-service-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feedback-service
+  template:
+    metadata:
+      labels:
+        app: feedback-service
+    spec:
+      containers:
+      - name: feedback-service-container
+        image: busybox:1.36legal-ai-feedback-service:latest # Thay thế bằng image của bạn
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8007
+        env:
+        # Cấu hình kết nối DB. TRONG THỰC TẾ, HÃY DÙNG K8S SECRETS!
+        - name: POSTGRES_HOST
+          value: "postgres" # Tên service của PostgreSQL
+        - name: POSTGRES_DB
+          value: "legal_rag"
+        - name: POSTGRES_USER
+          value: "legalai"
+        - name: POSTGRES_PASSWORD
+          value: "legalai123" # Thay bằng secret
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 30
+
+
+
+============================================================
+FILE: k8s/rag-system-deployment.yaml
+LINES: 43 | SIZE: 1.19KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-system-deployment
+  labels:
+    app: rag-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-system
+  template:
+    metadata:
+      labels:
+        app: rag-system
+    spec:
+      containers:
+      - name: rag-system-worker
+        image: busybox:1.36rag-system:latest # Thay đổi username của bạn
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka-service:29092"
+          - name: POSTGRES_HOST
+            value: "postgres-service" # Giả sử service của Postgres có tên này
+          # Lấy thông tin nhạy cảm từ Kubernetes Secrets
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret # Secret chứa thông tin Postgres
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret
+                key: POSTGRES_PASSWORD
+          - name: OPENAI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: openai-secret # Secret chứa API key của OpenAI
+                key: OPENAI_API_KEY
+
+
+

@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dlq-monitor-worker-deployment
+  labels:
+    app: dlq-monitor-worker
+spec:
+  replicas: 1 # Chỉ cần 1 bản sao cho dịch vụ giám sát này
+  selector:
+    matchLabels:
+      app: dlq-monitor-worker
+  template:
+    metadata:
+      labels:
+        app: dlq-monitor-worker
+    spec:
+      containers:
+      - name: dlq-monitor-worker
+        image: your-docker-username/legal-ai-dlq-monitor-worker:latest
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service:29092"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+

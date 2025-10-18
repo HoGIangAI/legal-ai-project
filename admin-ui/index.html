@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bảng điều khiển Phản hồi - Legal AI Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* A simple spinner for loading state */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Bảng điều khiển Phản hồi</h1>
+            <p class="text-gray-600">Legal AI Platform</p>
+        </header>
+
+        <!-- Authentication Section -->
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
+            <h2 class="text-lg font-semibold mb-2 text-gray-700">Xác thực API</h2>
+            <p class="text-sm text-gray-600 mb-3">Dán JWT Token của bạn từ Keycloak vào đây để tải dữ liệu.</p>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="text" id="jwtTokenInput" placeholder="Dán JWT Token vào đây..." class="flex-grow p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="fetchButton" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition duration-300">
+                    Tải dữ liệu
+                </button>
+            </div>
+        </div>
+
+        <!-- Data Table Section -->
+        <main class="bg-white p-6 rounded-lg shadow-md">
+            <div id="message-area" class="text-center py-10">
+                 <!-- Messages like loading, error, or initial prompt will be shown here -->
+                 <p class="text-gray-500">Vui lòng nhập Token và bấm "Tải dữ liệu" để bắt đầu.</p>
+            </div>
+            <div id="table-container" class="overflow-x-auto hidden">
+                <table class="min-w-full bg-white">
+                    <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                        <tr>
+                            <th class="py-3 px-6 text-left">Request ID</th>
+                            <th class="py-3 px-6 text-left">Đánh giá</th>
+                            <th class="py-3 px-6 text-left">Bình luận</th>
+                            <th class="py-3 px-6 text-left">Thời gian</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feedbackTableBody" class="text-gray-600 text-sm font-light">
+                        <!-- Data rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // DOM Elements
+        const fetchButton = document.getElementById('fetchButton');
+        const tokenInput = document.getElementById('jwtTokenInput');
+        const tableBody = document.getElementById('feedbackTableBody');
+        const messageArea = document.getElementById('message-area');
+        const tableContainer = document.getElementById('table-container');
+
+        // API Endpoint
+        // IMPORTANT: Update this if your ingress is on a different host/port
+        const API_ENDPOINT = '/api/v1/feedback';
+
+        /**
+         * Fetches feedback data from the API and populates the table.
+         */
+        async function fetchFeedback() {
+            const token = tokenInput.value.trim();
+
+            if (!token) {
+                messageArea.innerHTML = '<p class="text-red-500 font-semibold">Vui lòng nhập JWT Token.</p>';
+                tableContainer.classList.add('hidden');
+                return;
+            }
+
+            // Show loading state
+            messageArea.innerHTML = '<div class="flex justify-center items-center"><div class="loader"></div><p class="ml-4 text-gray-600">Đang tải dữ liệu...</p></div>';
+            tableContainer.classList.add('hidden');
+            tableBody.innerHTML = '';
+
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    populateTable(data);
+                    messageArea.innerHTML = '';
+                    tableContainer.classList.remove('hidden');
+                } else if (response.status === 401 || response.status === 403) {
+                     messageArea.innerHTML = '<p class="text-red-500 font-semibold">Lỗi Xác thực: Token không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại.</p>';
+                } else {
+                    throw new Error(`Lỗi Server: ${response.status} ${response.statusText}`);
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                messageArea.innerHTML = `<p class="text-red-500 font-semibold">Không thể tải dữ liệu. Vui lòng kiểm tra console log để biết chi tiết.</p><p class="text-sm text-gray-500 mt-2">${error.message}</p>`;
+            }
+        }
+
+        /**
+         * Populates the HTML table with feedback data.
+         * @param {Array} data - The array of feedback objects.
+         */
+        function populateTable(data) {
+            if (data.length === 0) {
+                 messageArea.innerHTML = '<p class="text-gray-500">Chưa có dữ liệu phản hồi nào.</p>';
+                 tableContainer.classList.add('hidden');
+                 return;
+            }
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-200 hover:bg-gray-100';
+
+                const ratingText = item.rating ? 'Hữu ích' : 'Không chính xác';
+                const ratingClass = item.rating ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
+                const formattedDate = new Date(item.created_at).toLocaleString('vi-VN');
+
+                row.innerHTML = `
+                    <td class="py-3 px-6 text-left whitespace-nowrap font-mono text-xs">${item.request_id}</td>
+                    <td class="py-3 px-6 text-left">
+                        <span class="py-1 px-3 rounded-full text-xs ${ratingClass}">${ratingText}</span>
+                    </td>
+                    <td class="py-3 px-6 text-left">${item.comment || '<i class="text-gray-400">Không có bình luận</i>'}</td>
+                    <td class="py-3 px-6 text-left">${formattedDate}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Event Listeners
+        fetchButton.addEventListener('click', fetchFeedback);
+    </script>
+</body>
+</html>
+

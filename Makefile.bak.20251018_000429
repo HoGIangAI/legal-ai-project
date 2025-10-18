@@ -1,0 +1,95 @@
+.PHONY: diagnose
+
+# Nếu đã có Makefile, bạn chỉ cần thêm target diagnose bên dưới vào file hiện có
+diagnose:
+	@echo "# Hoặc JSON:"
+	@echo "PYTHONPATH=$$PWD python -m common.diagnostics --json | jq ."
+	@echo "# Báo cáo sẽ lưu tại: "
+	@echo "# $$PWD/build/reports/diagnostics_YYYYmmdd_HHMM.json"
+	@PYTHONPATH=$$PWD python -m common.diagnostics
+
+.DEFAULT_GOAL := doctor
+.PHONY: doctor probe
+
+doctor:
+	@python3 scripts/repo_doctor.py --autofix || true
+	@echo "[doctor] done."
+
+probe:
+	python3 scripts/repo_probe.py --write-baseline
+	
+emit:
+	python3 -m tools.ontology.emit_graphops_jsonl --input $$ONTOLOGY_FILE --json
+
+consume:
+	python3 -m services.ontology.ontology_consumer --json
+.PHONY: install lint type test diagnose emit consume audit verify pipeline ui \
+        baseline scan diag-content sync-dry sync-apply graph-snapshot reports-summary
+
+PY?=python3
+PIP?=pip
+
+install:
+	$(PIP) install -e .[dev]
+
+lint:
+	ruff check .
+	ruff format --check .
+	mypy .
+
+format:
+	ruff format .
+
+test:
+	pytest -q
+
+# --- quản trị repo / baseline ---
+baseline:
+	$(PY) scripts/make_reference_repo.py --list build/reports/danhsach_file.json --output build/reports/reference_repo.json
+
+scan:
+	$(PY) scripts/step1_quet_theo_danhsach.py --list build/reports/danhsach_file.json
+
+diag-content:
+	$(PY) scripts/step2_chan_doan_loi.py
+
+sync-dry:
+	$(PY) scripts/sync_repo.py --reference build/reports/reference_repo.json --dry-run
+
+sync-apply:
+	$(PY) scripts/sync_repo.py --reference build/reports/reference_repo.json --apply
+
+# --- hạ tầng / preflight ---
+diagnose:
+	$(PY) -m common.diagnostics --mode diagnose --json
+
+# --- dòng dữ liệu ---
+emit:
+	$(PY) -m tools.ontology.emit_graphops_jsonl --input $$ONTOLOGY_FILE --json
+
+consume:
+	$(PY) -m services.ontology.ontology_consumer --json
+
+audit:
+	$(PY) -m tools.ontology.audit_integrity --mode audit --json
+
+verify:
+	$(PY) -m tools.ontology.verify_after_emit --json
+
+# --- Neo4j snapshot & tổng hợp báo cáo ---
+graph-snapshot:
+	$(PY) -m tools.ontology.graph_snapshot --json
+
+reports-summary:
+	$(PY) -m tools.ontology.report_summary --json
+
+# --- full pipeline ---
+pipeline:
+	make baseline && make scan && make diag-content && make diagnose
+	make emit && make consume && make audit && make verify
+	make graph-snapshot && make reports-summary
+
+# --- UI mini ---
+ui:
+	streamlit run scripts/ui_panel.py
+

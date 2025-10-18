@@ -1,0 +1,40 @@
+import json, time, uuid, os
+from confluent_kafka import SerializingProducer
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.serialization import StringSerializer
+from tools.kafka.kafka_config import producer_conf, schema_registry_conf, topic_names
+
+
+def main():
+    conf = base_kafka_conf()
+    admin = AdminClient(conf)
+    tn = topic_names()
+
+    # sizing mặc định (bạn có thể sửa nhanh bằng env/args)
+    sizing = {
+        tn["intents"]:   {"partitions": 12, "replication_factor": 3, "configs": {"retention.ms": str(7*24*3600*1000)}},
+        tn["documents"]: {"partitions": 12, "replication_factor": 3, "configs": {"retention.ms": str(7*24*3600*1000)}},
+        tn["ontology"]:  {"partitions": 6,  "replication_factor": 3, "configs": {"cleanup.policy": "compact,delete", "min.cleanable.dirty.ratio": "0.1"}},
+        tn["tasks"]:     {"partitions": 12, "replication_factor": 3, "configs": {"retention.ms": str(7*24*3600*1000)}},
+    }
+    # DLQ
+    dlqs = { f"{t}{tn['dlq_suffix']}": {"partitions": 6, "replication_factor": 3, "configs":{"retention.ms": str(30*24*3600*1000)}}
+             for t in [tn["intents"], tn["documents"], tn["ontology"], tn["tasks"]]}
+
+    to_create = {**sizing, **dlqs}
+    new_topics = [NewTopic(name, num_partitions=cfg["partitions"],
+                           replication_factor=cfg["replication_factor"],
+                           config=cfg["configs"])
+                  for name, cfg in to_create.items()]
+
+    futures = admin.create_topics(new_topics)
+    for t, f in futures.items():
+        try:
+            f.result()
+            print(f"[OK] created {t}")
+        except Exception as e:
+            print(f"[WARN] {t}: {e}")
+
+if __name__ == "__main__":
+    main()

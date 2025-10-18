@@ -1,0 +1,11 @@
+{
+  "src": {"concept_id": "K001", "name": "Clause K1", "domain": "legal"},
+  "dst": {"concept_id": "K002", "name": "Clause K2", "domain": "legal"},
+  "rel": {
+    "type": "CROSSES_DOMAIN",
+    "edge_id": "edge-K001-K002",
+    "metadata": {"source": "manual_test"},
+    "version": "v1",
+    "kctx": "ctx-neo4j-test"
+  }
+}

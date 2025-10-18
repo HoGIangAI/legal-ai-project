@@ -121,3 +121,14 @@ ui:
 	@echo "🚀 Starting GraphOps Monitor Pro UI..."
 	. .venv/bin/activate && uvicorn tools.monitor.api:app --host 0.0.0.0 --port 8088 --reload
 
+# -------------------------------
+# Context & Snapshot
+# -------------------------------
+ctx:
+	@$(VENV_PYTHON) tools/ops/context_probe.py
+
+snapshot:
+	@mkdir -p build/reports
+	@$(VENV_PYTHON) tools/ops/context_probe.py | tee build/reports/session_ctx_$$(date +%Y%m%d_%H%M%S).json >/dev/null
+	@echo "💾 Saved snapshot → build/reports/session_ctx_$$(date +%Y%m%d_%H%M%S).json"
+

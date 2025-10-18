@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Analyzer - Web UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .tab-button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #d1d5db;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-button.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                <i class="fas fa-code mr-3 text-blue-500"></i>
+                Code Analyzer
+            </h1>
+            <p class="text-gray-600">Phân tích và trích xuất code từ dự án của bạn</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Panel - Scan Project -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-folder-open mr-2 text-green-500"></i>
+                    Quét Dự Án
+                </h2>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">
+                        Đường dẫn dự án:
+                    </label>
+                    <div class="flex gap-2">
+                        <input type="text" id="projectPath" 
+                               value="." 
+                               class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button onclick="handleScanProject()" 
+                                class="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg font-semibold transition duration-200">
+                            <i class="fas fa-search mr-2"></i>Quét
+                        </button>
+                    </div>
+                    <p class="text-gray-500 text-sm mt-1">
+                        Nhập đường dẫn đến thư mục dự án (mặc định: thư mục hiện tại)
+                    </p>
+                </div>
+
+                <!-- Scan Results -->
+                <div id="scanResults" class="hidden">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Kết Quả Quét</h3>
+                    <div id="scanStats" class="bg-gray-50 rounded-lg p-4 mb-4"></div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Extract Files -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-file-export mr-2 text-purple-500"></i>
+                    Trích Xuất Code
+                </h2>
+
+                <!-- Tabs -->
+                <div class="mb-4">
+                    <div class="flex border-b">
+                        <button id="tabPattern" class="tab-button active rounded-tl-lg" onclick="switchTab('pattern')">
+                            <i class="fas fa-filter mr-2"></i>Pattern
+                        </button>
+                        <button id="tabFileList" class="tab-button rounded-tr-lg" onclick="switchTab('filelist')">
+                            <i class="fas fa-list mr-2"></i>Danh sách File
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pattern Tab -->
+                <div id="tabContentPattern" class="tab-content active">
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            Chọn file cần trích xuất:
+                        </label>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" id="filePattern" 
+                                   placeholder="Nhập pattern (vd: *.py, src/*.js, utils...)" 
+                                   class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button onclick="handleAddPattern()" 
+                                    class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold transition duration-200">
+                                <i class="fas fa-plus mr-2"></i>Thêm
+                            </button>
+                        </div>
+                        
+                        <div id="patternsList" class="space-y-2 mb-4"></div>
+                    </div>
+                </div>
+
+                <!-- File List Tab -->
+                <div id="tabContentFileList" class="tab-content">
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            Danh sách file (mỗi file 1 dòng):
+                        </label>
+                        <textarea id="fileListText" 
+                                  placeholder="Dán danh sách file vào đây, mỗi file một dòng. Ví dụ:
+src/app.js
+src/components/Header.js
+utils/helpers.py
+config.json"
+                                  class="w-full h-48 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-vertical"></textarea>
+                        <p class="text-gray-500 text-sm mt-1">
+                            💡 Tip: Copy danh sách file từ terminal hoặc file explorer
+                        </p>
+                    </div>
+                </div>
+
+                <button onclick="handleExtractFiles()" 
+                        class="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold transition duration-200">
+                    <i class="fas fa-download mr-2"></i>Trích Xuất Code
+                </button>
+
+                <!-- Extraction Results -->
+                <div id="extractResults" class="hidden mt-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Kết Quả Trích Xuất</h3>
+                    <div id="extractStats" class="bg-gray-50 rounded-lg p-4"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Files List -->
+        <div id="filesSection" class="hidden mt-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-list mr-2 text-orange-500"></i>
+                    Danh Sách File
+                </h2>
+                <div class="mb-4">
+                    <button onclick="copyAllFilePaths()" 
+                            class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold transition duration-200">
+                        <i class="fas fa-copy mr-2"></i>Copy tất cả đường dẫn
+                    </button>
+                </div>
+                <div id="filesList" class="space-y-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-4">
+            <div class="loading-spinner"></div>
+            <span class="text-gray-700 font-semibold" id="loadingText">Đang xử lý...</span>
+        </div>
+    </div>
+
+    <script>
+        let currentPatterns = [];
+        let currentTab = 'pattern';
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            
+            document.getElementById('tabPattern').classList.toggle('active', tabName === 'pattern');
+            document.getElementById('tabFileList').classList.toggle('active', tabName === 'filelist');
+            
+            document.getElementById('tabContentPattern').classList.toggle('active', tabName === 'pattern');
+            document.getElementById('tabContentFileList').classList.toggle('active', tabName === 'filelist');
+        }
+
+        function showLoading(text) {
+            document.getElementById('loadingText').textContent = text || 'Đang xử lý...';
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            let bgColor = 'bg-blue-500';
+            if (type === 'success') bgColor = 'bg-green-500';
+            if (type === 'error') bgColor = 'bg-red-500';
+            if (type === 'warning') bgColor = 'bg-yellow-500';
+            
+            notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white font-semibold z-50 ${bgColor}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 5000);
+        }
+
+        async function handleScanProject() {
+            const projectPath = document.getElementById('projectPath').value.trim();
+            
+            if (!projectPath) {
+                showNotification('Vui lòng nhập đường dẫn dự án', 'warning');
+                return;
+            }
+            
+            showLoading('Đang quét dự án...');
+            
+            try {
+                const response = await fetch('/scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ project_path: projectPath })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('scanResults').classList.remove('hidden');
+                    document.getElementById('scanStats').innerHTML = `
+                        <div class="grid grid-cols-3 gap-4 text-center">
+                            <div>
+                                <div class="text-2xl font-bold text-green-600">${result.total_files}</div>
+                                <div class="text-gray-600">Tổng số file</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-blue-600">${Object.keys(result.context).length}</div>
+                                <div class="text-gray-600">File được quét</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-purple-600">${Math.round(Object.values(result.context).reduce((acc, file) => acc + file.size_kb, 0))}</div>
+                                <div class="text-gray-600">Tổng size (KB)</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    await loadFilesList();
+                    showNotification('Quét dự án thành công!', 'success');
+                } else {
+                    showNotification('Lỗi: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Lỗi kết nối: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function loadFilesList() {
+            try {
+                const response = await fetch('/files');
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('filesSection').classList.remove('hidden');
+                    const filesList = document.getElementById('filesList');
+                    filesList.innerHTML = '';
+                    
+                    for (const [fileType, files] of Object.entries(result.files_by_type)) {
+                        const fileTypeDiv = document.createElement('div');
+                        fileTypeDiv.className = 'border border-gray-200 rounded-lg p-4';
+                        
+                        const typeHeader = document.createElement('div');
+                        typeHeader.className = 'flex justify-between items-center mb-2';
+                        typeHeader.innerHTML = `
+                            <span class="font-semibold text-gray-700">
+                                ${fileType || 'Không có extension'} (${files.length} files)
+                            </span>
+                            <button onclick="toggleFileList('${fileType}')" 
+                                    class="text-blue-500 hover:text-blue-700">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        `;
+                        
+                        const fileList = document.createElement('div');
+                        fileList.id = 'fileList-' + fileType;
+                        fileList.className = 'space-y-1 hidden';
+                        
+                        files.slice(0, 10).forEach(file => {
+                            const fileItem = document.createElement('div');
+                            fileItem.className = 'flex justify-between items-center py-1 px-2 hover:bg-gray-50 rounded';
+                            fileItem.innerHTML = `
+                                <span class="text-sm text-gray-600">${file.path}</span>
+                                <span class="text-xs text-gray-500">${file.lines} dòng</span>
+                            `;
+                            fileList.appendChild(fileItem);
+                        });
+                        
+                        if (files.length > 10) {
+                            const moreItem = document.createElement('div');
+                            moreItem.className = 'text-center text-sm text-gray-500 py-1';
+                            moreItem.textContent = '... và ' + (files.length - 10) + ' file khác';
+                            fileList.appendChild(moreItem);
+                        }
+                        
+                        fileTypeDiv.appendChild(typeHeader);
+                        fileTypeDiv.appendChild(fileList);
+                        filesList.appendChild(fileTypeDiv);
+                    }
+                } else {
+                    showNotification('Lỗi tải danh sách file: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading files:', error);
+                showNotification('Lỗi tải danh sách file', 'error');
+            }
+        }
+
+        function copyAllFilePaths() {
+            const allPaths = [];
+            const fileItems = document.querySelectorAll('[class*="text-sm text-gray-600"]');
+            
+            fileItems.forEach(item => {
+                allPaths.push(item.textContent);
+            });
+            
+            const textToCopy = allPaths.join('\n');
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showNotification('Đã copy ' + allPaths.length + ' đường dẫn file!', 'success');
+            }).catch(err => {
+                showNotification('Lỗi copy: ' + err, 'error');
+            });
+        }
+
+        function toggleFileList(fileType) {
+            const fileList = document.getElementById('fileList-' + fileType);
+            fileList.classList.toggle('hidden');
+        }
+
+        function handleAddPattern() {
+            const patternInput = document.getElementById('filePattern');
+            const pattern = patternInput.value.trim();
+            
+            if (pattern && !currentPatterns.includes(pattern)) {
+                currentPatterns.push(pattern);
+                updatePatternsList();
+                patternInput.value = '';
+                showNotification('Đã thêm pattern: ' + pattern, 'success');
+            } else if (currentPatterns.includes(pattern)) {
+                showNotification('Pattern đã tồn tại', 'warning');
+            }
+        }
+
+        function updatePatternsList() {
+            const patternsList = document.getElementById('patternsList');
+            patternsList.innerHTML = '';
+            
+            currentPatterns.forEach((pattern, index) => {
+                const patternItem = document.createElement('div');
+                patternItem.className = 'flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2';
+                patternItem.innerHTML = `
+                    <span class="text-blue-700">${pattern}</span>
+                    <button onclick="removePattern(${index})" class="text-red-500 hover:text-red-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+                patternsList.appendChild(patternItem);
+            });
+        }
+
+        function removePattern(index) {
+            const removedPattern = currentPatterns[index];
+            currentPatterns.splice(index, 1);
+            updatePatternsList();
+            showNotification('Đã xóa pattern: ' + removedPattern, 'info');
+        }
+
+        async function handleExtractFiles() {
+            let patternsToExtract = [];
+            
+            if (currentTab === 'pattern') {
+                if (currentPatterns.length === 0) {
+                    showNotification('Vui lòng thêm ít nhất một pattern', 'warning');
+                    return;
+                }
+                patternsToExtract = currentPatterns;
+            } else {
+                const fileListText = document.getElementById('fileListText').value.trim();
+                if (!fileListText) {
+                    showNotification('Vui lòng nhập danh sách file', 'warning');
+                    return;
+                }
+                
+                const fileLines = fileListText.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                
+                if (fileLines.length === 0) {
+                    showNotification('Không tìm thấy file hợp lệ trong danh sách', 'warning');
+                    return;
+                }
+                
+                patternsToExtract = fileLines;
+                showNotification('Đã nhận ' + fileLines.length + ' file từ danh sách', 'success');
+            }
+            
+            showLoading('Đang trích xuất code...');
+            
+            try {
+                const response = await fetch('/extract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ patterns: patternsToExtract })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('extractResults').classList.remove('hidden');
+                    document.getElementById('extractStats').innerHTML = `
+                        <div class="grid grid-cols-3 gap-4 text-center mb-4">
+                            <div>
+                                <div class="text-2xl font-bold text-green-600">${result.selected_files}</div>
+                                <div class="text-gray-600">File được chọn</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-blue-600">${result.total_lines}</div>
+                                <div class="text-gray-600">Tổng số dòng</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-purple-600">${result.total_size_kb}</div>
+                                <div class="text-gray-600">Tổng size (KB)</div>
+                            </div>
+                        </div>
+                        <div class="text-center space-x-4">
+                            <a href="/download/${result.output_files.json.split('/').pop()}" 
+                               class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold transition duration-200 inline-block">
+                                <i class="fas fa-download mr-2"></i>Tải JSON
+                            </a>
+                            <a href="/download/${result.output_files.text.split('/').pop()}" 
+                               class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold transition duration-200 inline-block">
+                                <i class="fas fa-download mr-2"></i>Tải Text
+                            </a>
+                        </div>
+                    `;
+                    
+                    showNotification('Trích xuất thành công!', 'success');
+                } else {
+                    showNotification('Lỗi: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Lỗi kết nối: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('projectPath').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleScanProject();
+                }
+            });
+            
+            document.getElementById('filePattern').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleAddPattern();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

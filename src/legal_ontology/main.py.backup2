@@ -1,0 +1,180 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Optional
+import neo4j
+import os
+import logging
+from contextlib import asynccontextmanager
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Models
+class LegalEntity(BaseModel):
+    id: str
+    name: str
+    type: str
+    properties: Dict[str, str]
+
+class Relationship(BaseModel):
+    source: str
+    target: str
+    type: str
+    properties: Dict[str, str]
+
+class OntologyQuery(BaseModel):
+    entity_id: Optional[str] = None
+    entity_name: Optional[str] = None
+    relationship_type: Optional[str] = None
+    depth: int = 2
+
+class OntologyResponse(BaseModel):
+    entities: List[LegalEntity]
+    relationships: List[Relationship]
+
+# Neo4j connection
+def get_neo4j_driver():
+    return neo4j.GraphDatabase.driver(
+        os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        auth=(
+            os.getenv("NEO4J_USER", "neo4j"),
+            os.getenv("NEO4J_PASSWORD", "legalai123")
+        )
+    )
+
+# Initialize ontology schema
+async def initialize_ontology():
+    try:
+        driver = get_neo4j_driver()
+        with driver.session() as session:
+            # Create constraints
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:LegalEntity) REQUIRE e.id IS UNIQUE")
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:LegalEntity) REQUIRE e.name IS UNIQUE")
+            
+            # Create sample legal ontology - FIXED: include all parameters
+            sample_entities = [
+                {"id": "law_001", "name": "Bộ luật Dân sự 2015", "type": "LAW", "description": "Bộ luật điều chỉnh các quan hệ dân sự"},
+                {"id": "article_001", "name": "Điều 1. Phạm vi điều chỉnh", "type": "ARTICLE", "description": "Phạm vi điều chỉnh của Bộ luật Dân sự"},
+                {"id": "concept_001", "name": "Giao dịch dân sự", "type": "CONCEPT", "description": "Hợp đồng hoặc hành vi pháp lý đơn phương"},
+            ]
+            
+            for entity in sample_entities:
+                session.run("""
+                    MERGE (e:LegalEntity {id: $id})
+                    SET e.name = $name, e.type = $type, e.description = $description
+                """, 
+                id=entity["id"],
+                name=entity["name"], 
+                type=entity["type"],
+                description=entity["description"])
+                
+        logger.info("Legal ontology initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize ontology: {str(e)}")
+
+# Lifespan handler (replaces deprecated on_event)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await initialize_ontology()
+    yield
+    # Shutdown
+    pass
+
+app = FastAPI(title="Legal Ontology Service", version="1.0.0", lifespan=lifespan)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "legal_ontology"}
+
+@app.post("/api/v1/ontology/query", response_model=OntologyResponse)
+async def query_ontology(query: OntologyQuery):
+    try:
+        driver = get_neo4j_driver()
+        with driver.session() as session:
+            if query.entity_id:
+                result = session.run("""
+                    MATCH (start:LegalEntity {id: $entity_id})
+                    WITH start
+                    MATCH path = (start)-[*1..$depth]-(related:LegalEntity)
+                    UNWIND nodes(path) as node
+                    UNWIND relationships(path) as rel
+                    RETURN 
+                        COLLECT(DISTINCT node) as nodes,
+                        COLLECT(DISTINCT rel) as relationships
+                """, entity_id=query.entity_id, depth=query.depth)
+            elif query.entity_name:
+                result = session.run("""
+                    MATCH (start:LegalEntity {name: $entity_name})
+                    WITH start
+                    MATCH path = (start)-[*1..$depth]-(related:LegalEntity)
+                    UNWIND nodes(path) as node
+                    UNWIND relationships(path) as rel
+                    RETURN 
+                        COLLECT(DISTINCT node) as nodes,
+                        COLLECT(DISTINCT rel) as relationships
+                """, entity_name=query.entity_name, depth=query.depth)
+            else:
+                raise HTTPException(status_code=400, detail="Either entity_id or entity_name must be provided")
+            
+            record = result.single()
+            if not record:
+                return OntologyResponse(entities=[], relationships=[])
+            
+            entities = [
+                LegalEntity(
+                    id=node["id"],
+                    name=node["name"],
+                    type=node["type"],
+                    properties={k: v for k, v in node.items() if k not in ["id", "name", "type"]}
+                )
+                for node in record["nodes"]
+            ]
+            
+            relationships = [
+                Relationship(
+                    source=rel.start_node["id"],
+                    target=rel.end_node["id"],
+                    type=rel.type,
+                    properties=dict(rel)
+                )
+                for rel in record["relationships"]
+            ]
+            
+            return OntologyResponse(entities=entities, relationships=relationships)
+            
+    except Exception as e:
+        logger.error(f"Ontology query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+@app.post("/api/v1/ontology/expand")
+async def expand_ontology(entity_data: LegalEntity, relationships: List[Relationship]):
+    try:
+        driver = get_neo4j_driver()
+        with driver.session() as session:
+            session.run("""
+                MERGE (e:LegalEntity {id: $id})
+                SET e += $properties
+            """, id=entity_data.id, properties={
+                "name": entity_data.name,
+                "type": entity_data.type,
+                **entity_data.properties
+            })
+            
+            for rel in relationships:
+                session.run("""
+                    MATCH (source:LegalEntity {id: $source_id})
+                    MATCH (target:LegalEntity {id: $target_id})
+                    MERGE (source)-[r:RELATES_TO {type: $rel_type}]->(target)
+                    SET r += $properties
+                """, source_id=rel.source, target_id=rel.target, 
+                   rel_type=rel.type, properties=rel.properties)
+            
+        return {"status": "success", "message": "Ontology expanded successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Expansion failed: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8003, log_level="info")

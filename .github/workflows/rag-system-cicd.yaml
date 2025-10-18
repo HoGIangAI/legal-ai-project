@@ -1,0 +1,24 @@
+# .github/workflows/rag-system-cicd.yaml
+name: CI/CD for RAG System
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/rag_system/**'
+      - '.github/workflows/rag-system-cicd.yaml'
+      - '.github/workflows/reusable-deploy-workflow.yaml'
+
+jobs:
+  call-reusable-workflow:
+    name: Call Reusable Deploy Workflow
+    uses: ./.github/workflows/reusable-deploy-workflow.yaml
+    with:
+      service_name: 'rag-system'
+      service_path: 'src/rag_system'
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+

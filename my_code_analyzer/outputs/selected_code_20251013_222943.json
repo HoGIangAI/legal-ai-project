@@ -1,0 +1,378 @@
+{
+  "k8s/cicd-rbac.yaml": {
+    "path": "k8s/cicd-rbac.yaml",
+    "content": "# k8s/cicd-rbac.yaml\n# File này định nghĩa Service Account và các quyền hạn giới hạn cho CI/CD pipeline.\n\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: cicd-service-account\n  namespace: default\n\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: Role\nmetadata:\n  name: deployment-manager-role\n  namespace: default\nrules:\n  # Cấp quyền quản lý các tài nguyên Deployments và Services\n  - apiGroups: [\"apps\", \"\"]\n    resources: [\"deployments\", \"services\"]\n    verbs: [\"create\", \"get\", \"list\", \"update\", \"patch\", \"delete\"]\n\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: cicd-role-binding\n  namespace: default\nsubjects:\n  # Gắn các quyền hạn ở trên vào Service Account cicd-service-account\n  - kind: ServiceAccount\n    name: cicd-service-account\n    namespace: default\nroleRef:\n  kind: Role\n  name: deployment-manager-role\n  apiGroup: rbac.authorization.k8s.io\n\n",
+    "lines": 38,
+    "size_kb": 0.88,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/dlq-monitor-worker-deployment.yaml": {
+    "path": "k8s/dlq-monitor-worker-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: dlq-monitor-worker-deployment\n  labels:\n    app: dlq-monitor-worker\nspec:\n  replicas: 1 # Chỉ cần 1 bản sao cho dịch vụ giám sát này\n  selector:\n    matchLabels:\n      app: dlq-monitor-worker\n  template:\n    metadata:\n      labels:\n        app: dlq-monitor-worker\n    spec:\n      containers:\n      - name: dlq-monitor-worker\n        image: your-docker-username/legal-ai-dlq-monitor-worker:latest\n        env:\n        - name: KAFKA_BOOTSTRAP_SERVERS\n          value: \"kafka-service:29092\"\n        resources:\n          requests:\n            cpu: \"50m\"\n            memory: \"64Mi\"\n          limits:\n            cpu: \"200m\"\n            memory: \"128Mi\"\n\n",
+    "lines": 31,
+    "size_kb": 0.69,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/dlq-monitor-worker-service.yaml": {
+    "path": "k8s/dlq-monitor-worker-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: dlq-monitor-worker-service\n  labels:\n    app: dlq-monitor-worker\nspec:\n  clusterIP: None # Headless service vì không cần expose port\n  selector:\n    app: dlq-monitor-worker\n\n",
+    "lines": 12,
+    "size_kb": 0.22,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/double-check-deployment.yaml": {
+    "path": "k8s/double-check-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: double-check-deployment\n  labels:\n    app: double-check\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: double-check\n  template:\n    metadata:\n      labels:\n        app: double-check\n    spec:\n      containers:\n      - name: double-check-worker\n        image: your-docker-username/legal-ai-double-check:latest # Thay đổi username của bạn\n        env:\n          - name: KAFKA_BOOTSTRAP_SERVERS\n            value: \"kafka-service:29092\"\n\n",
+    "lines": 24,
+    "size_kb": 0.49,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/double-check-service.yaml": {
+    "path": "k8s/double-check-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: double-check-service\nspec:\n  clusterIP: None # Định nghĩa đây là một headless service\n  selector:\n    app: double-check\n",
+    "lines": 9,
+    "size_kb": 0.16,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/expert-platform-deployment.yaml": {
+    "path": "k8s/expert-platform-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: expert-platform-deployment\n  labels:\n    app: expert-platform\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: expert-platform\n  template:\n    metadata:\n      labels:\n        app: expert-platform\n    spec:\n      containers:\n      - name: expert-platform-worker\n        image: your-docker-username/legal-ai-expert-platform:latest # Thay đổi username của bạn\n        env:\n          - name: KAFKA_BOOTSTRAP_SERVERS\n            value: \"kafka-service:29092\"\n\n",
+    "lines": 24,
+    "size_kb": 0.51,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/expert-platform-service.yaml": {
+    "path": "k8s/expert-platform-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: expert-platform-service\nspec:\n  clusterIP: None # Định nghĩa đây là một headless service\n  selector:\n    app: expert-platform\n\n",
+    "lines": 10,
+    "size_kb": 0.17,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/feedback-service-deployment.yaml": {
+    "path": "k8s/feedback-service-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: feedback-service-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: feedback-service\n  template:\n    metadata:\n      labels:\n        app: feedback-service\n    spec:\n      containers:\n      - name: feedback-service-container\n        image: your-docker-registry/legal-ai-feedback-service:latest # Thay thế bằng image của bạn\n        ports:\n        - containerPort: 8007\n        env:\n        # Cấu hình kết nối DB. TRONG THỰC TẾ, HÃY DÙNG K8S SECRETS!\n        - name: POSTGRES_HOST\n          value: \"postgres\" # Tên service của PostgreSQL\n        - name: POSTGRES_DB\n          value: \"legal_rag\"\n        - name: POSTGRES_USER\n          value: \"legalai\"\n        - name: POSTGRES_PASSWORD\n          value: \"legalai123\" # Thay bằng secret\n        readinessProbe:\n          httpGet:\n            path: /health\n            port: 8007\n          initialDelaySeconds: 15\n        livenessProbe:\n          httpGet:\n            path: /health\n            port: 8007\n          initialDelaySeconds: 30\n\n",
+    "lines": 41,
+    "size_kb": 1.04,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/feedback-service-ingress-route.yaml": {
+    "path": "k8s/feedback-service-ingress-route.yaml",
+    "content": "apiVersion: traefik.containo.us/v1alpha1\nkind: IngressRoute\nmetadata:\n  name: feedback-service-ingress-route\n  namespace: default\nspec:\n  entryPoints:\n    - web # Entrypoint cho HTTP, thường là port 80\n  routes:\n    - match: PathPrefix(`/api/v1/feedback`)\n      kind: Rule\n      services:\n        - name: feedback-service-service\n          port: 80\n      middlewares:\n        - name: jwt-authenticator # Áp dụng middleware xác thực JWT\n\n",
+    "lines": 18,
+    "size_kb": 0.43,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/feedback-service-service.yaml": {
+    "path": "k8s/feedback-service-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: feedback-service\nspec:\n  type: ClusterIP\n  ports:\n  - port: 80\n    targetPort: 8007\n  selector:\n    app: feedback-service\n\n",
+    "lines": 13,
+    "size_kb": 0.17,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/grafana-datasource-configmap.yaml": {
+    "path": "k8s/grafana-datasource-configmap.yaml",
+    "content": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: grafana-datasources\ndata:\n  # Tên file cấu hình datasources\n  prometheus.yaml: |-\n    # Cấu hình cho API version 1 của Grafana\n    apiVersion: 1\n    # Danh sách các data sources\n    datasources:\n    - name: Prometheus\n      type: prometheus\n      # URL trỏ tới Prometheus service đã tạo ở bước trước\n      url: http://prometheus-service:9090\n      access: proxy\n      isDefault: true\n\n",
+    "lines": 19,
+    "size_kb": 0.42,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/grafana-deployment.yaml": {
+    "path": "k8s/grafana-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: grafana-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: grafana\n  template:\n    metadata:\n      labels:\n        app: grafana\n    spec:\n      containers:\n      - name: grafana\n        image: grafana/grafana:9.2.5\n        ports:\n        - containerPort: 3000\n        # Mount volume chứa file cấu hình data source\n        volumeMounts:\n        - name: grafana-datasources-volume\n          mountPath: /etc/grafana/provisioning/datasources\n      # Định nghĩa volume từ ConfigMap\n      volumes:\n      - name: grafana-datasources-volume\n        configMap:\n          name: grafana-datasources\n\n",
+    "lines": 30,
+    "size_kb": 0.65,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/grafana-service.yaml": {
+    "path": "k8s/grafana-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: grafana-service\nspec:\n  # Sử dụng NodePort để expose dịch vụ ra ngoài cluster\n  type: NodePort\n  ports:\n    - port: 3000\n      targetPort: 3000\n      # Port để truy cập từ bên ngoài. Bạn có thể thay đổi nếu port này đã được sử dụng.\n      nodePort: 30000\n  selector:\n    app: grafana\n\n",
+    "lines": 16,
+    "size_kb": 0.32,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/intent-system-deployment.yaml": {
+    "path": "k8s/intent-system-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: intent-system-deployment\n  labels:\n    app: intent-system\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: intent-system\n  template:\n    metadata:\n      labels:\n        app: intent-system\n      # Annotations để Prometheus có thể tự động khám phá\n      annotations:\n        prometheus.io/scrape: 'true'\n        prometheus.io/path: '/metrics'\n        prometheus.io/port: '8001'\n    spec:\n      containers:\n      - name: intent-system\n        image: your-docker-username/legal-ai-intent-system:latest\n        ports:\n        - containerPort: 8001\n        # --- CẬP NHẬT: THÊM CÁC BIẾN MÔI TRƯỜNG ---\n        env:\n        - name: KAFKA_BOOTSTRAP_SERVERS\n          value: \"kafka-service:29092\"\n        - name: POSTGRES_HOST\n          value: \"postgres-service\" # Giả sử tên service của Postgres là postgres-service\n        - name: POSTGRES_DB\n          value: \"legal_rag\"\n        - name: POSTGRES_USER\n          valueFrom:\n            secretKeyRef:\n              name: postgres-secret\n              key: username\n        - name: POSTGRES_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              name: postgres-secret\n              key: password\n        # --- KẾT THÚC CẬP NHẬT ---\n        # Cấu hình tài nguyên\n        resources:\n          requests:\n            cpu: \"100m\"\n            memory: \"128Mi\"\n          limits:\n            cpu: \"500m\"\n            memory: \"256Mi\"\n        # Health probes để K8s tự động kiểm tra sức khỏe\n        livenessProbe:\n          httpGet:\n            path: /health\n            port: 8001\n          initialDelaySeconds: 15\n          periodSeconds: 20\n        readinessProbe:\n          httpGet:\n            path: /health\n            port: 8001\n          initialDelaySeconds: 5\n          periodSeconds: 10\n\n\n",
+    "lines": 69,
+    "size_kb": 1.77,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/intent-system-service.yaml": {
+    "path": "k8s/intent-system-service.yaml",
+    "content": "# apiVersion cho Service là v1\napiVersion: v1\n# kind là Service\nkind: Service\nmetadata:\n  # Tên của Service\n  name: intent-system-service\nspec:\n  # Loại ClusterIP: chỉ có thể được truy cập từ bên trong cluster K8s\n  type: ClusterIP\n  # selector để Service biết cần gửi traffic đến những pod nào\n  selector:\n    # Phải khớp với nhãn của các pod được tạo bởi Deployment\n    app: intent-system\n  # Cấu hình port\n  ports:\n  - protocol: TCP\n    # Port mà Service sẽ lắng nghe\n    port: 80\n    # Port trên container mà traffic sẽ được chuyển đến\n    targetPort: 8001\n\n",
+    "lines": 23,
+    "size_kb": 0.55,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/kafka-zookeeper.yaml": {
+    "path": "k8s/kafka-zookeeper.yaml",
+    "content": "# --- Zookeeper Deployment ---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: zookeeper-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: zookeeper\n  template:\n    metadata:\n      labels:\n        app: zookeeper\n    spec:\n      containers:\n      - name: zookeeper\n        image: confluentinc/cp-zookeeper:7.0.1\n        ports:\n        - containerPort: 2181\n        env:\n        - name: ZOOKEEPER_CLIENT_PORT\n          value: \"2181\"\n        - name: ZOOKEEPER_TICK_TIME\n          value: \"2000\"\n\n---\n# --- Zookeeper Service ---\napiVersion: v1\nkind: Service\nmetadata:\n  name: zookeeper-service\nspec:\n  selector:\n    app: zookeeper\n  ports:\n  - protocol: TCP\n    port: 2181\n    targetPort: 2181\n\n---\n# --- Kafka Deployment ---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: kafka-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: kafka\n  template:\n    metadata:\n      labels:\n        app: kafka\n    spec:\n      containers:\n      - name: kafka\n        image: confluentinc/cp-kafka:7.0.1\n        ports:\n        - containerPort: 9092\n        - containerPort: 29092\n        env:\n        - name: KAFKA_BROKER_ID\n          value: \"1\"\n        - name: KAFKA_ZOOKEEPER_CONNECT\n          value: \"zookeeper-service:2181\"\n        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP\n          value: \"INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT\"\n        - name: KAFKA_ADVERTISED_LISTENERS\n          value: \"INTERNAL://kafka-service:29092,EXTERNAL://localhost:9092\"\n        - name: KAFKA_INTER_BROKER_LISTENER_NAME\n          value: \"INTERNAL\"\n        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR\n          value: \"1\"\n\n---\n# --- Kafka Service ---\napiVersion: v1\nkind: Service\nmetadata:\n  name: kafka-service\nspec:\n  selector:\n    app: kafka\n  ports:\n  - name: internal\n    protocol: TCP\n    port: 29092\n    targetPort: 29092\n  - name: external\n    protocol: TCP\n    port: 9092\n    targetPort: 9092\n    # Sử dụng NodePort để có thể truy cập từ bên ngoài Minikube cho việc test\n    nodePort: 30092\n  type: NodePort\n\n\n",
+    "lines": 100,
+    "size_kb": 1.99,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/keycloak-deployment.yaml": {
+    "path": "k8s/keycloak-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: keycloak-deployment\n  labels:\n    app: keycloak\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: keycloak\n  template:\n    metadata:\n      labels:\n        app: keycloak\n    spec:\n      containers:\n        - name: keycloak\n          image: quay.io/keycloak/keycloak:21.1.1\n          args: [\"start-dev\"] # Sử dụng start-dev cho môi trường thử nghiệm\n          env:\n            - name: KEYCLOAK_ADMIN\n              value: \"admin\" # Thay bằng secret\n            - name: KEYCLOAK_ADMIN_PASSWORD\n              value: \"admin\" # Thay bằng secret\n            - name: KC_PROXY\n              value: \"edge\"\n          ports:\n            - name: http\n              containerPort: 8080\n          readinessProbe:\n            httpGet:\n              path: /realms/master\n              port: 8080\n            initialDelaySeconds: 30\n            periodSeconds: 10\n\n",
+    "lines": 38,
+    "size_kb": 0.89,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/keycloak-service.yaml": {
+    "path": "k8s/keycloak-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: keycloak-service\n  labels:\n    app: keycloak\nspec:\n  type: NodePort\n  ports:\n    - name: http\n      port: 8080\n      targetPort: 8080\n      nodePort: 30080 # Port để truy cập từ bên ngoài\n  selector:\n    app: keycloak\n\n",
+    "lines": 17,
+    "size_kb": 0.26,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/legal-ontology-deployment.yaml": {
+    "path": "k8s/legal-ontology-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: legal-ontology-deployment\n  labels:\n    app: legal-ontology\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: legal-ontology\n  template:\n    metadata:\n      labels:\n        app: legal-ontology\n    spec:\n      containers:\n      - name: legal-ontology\n        image: your-docker-username/legal-ai-legal-ontology:latest # Thay đổi username của bạn\n        ports:\n        - containerPort: 8003\n        env:\n          - name: NEO4J_URI\n            value: \"bolt://neo4j-service:7687\" # Giả sử service Neo4j có tên này\n          # Lấy thông tin nhạy cảm từ Kubernetes Secrets\n          - name: NEO4J_USER\n            valueFrom:\n              secretKeyRef:\n                name: neo4j-secret\n                key: NEO4J_USER\n          - name: NEO4J_PASSWORD\n            valueFrom:\n              secretKeyRef:\n                name: neo4j-secret\n                key: NEO4J_PASSWORD\n        livenessProbe:\n          httpGet:\n            path: /health\n            port: 8003\n          initialDelaySeconds: 20\n          periodSeconds: 25\n        readinessProbe:\n          httpGet:\n            path: /health\n            port: 8003\n          initialDelaySeconds: 10\n          periodSeconds: 15\n\n",
+    "lines": 49,
+    "size_kb": 1.21,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/legal-ontology-service.yaml": {
+    "path": "k8s/legal-ontology-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: legal-ontology-service\nspec:\n  type: ClusterIP\n  selector:\n    app: legal-ontology\n  ports:\n    - protocol: TCP\n      port: 80\n      targetPort: 8003\n\n",
+    "lines": 14,
+    "size_kb": 0.19,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/loki-configmap.yaml": {
+    "path": "k8s/loki-configmap.yaml",
+    "content": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: loki-config\ndata:\n  loki.yaml: |\n    auth_enabled: false\n    server:\n      http_listen_port: 3100\n    ingester:\n      lifecycler:\n        address: 127.0.0.1\n        ring:\n          kvstore:\n            store: inmemory\n          replication_factor: 1\n        final_sleep: 0s\n      chunk_idle_period: 5m\n      chunk_target_size: 1.5m\n      max_chunk_age: 1h\n    schema_config:\n      configs:\n        - from: 2020-10-24\n          store: boltdb-shipper\n          object_store: filesystem\n          schema: v11\n          index:\n            prefix: index_\n            period: 24h\n    storage_config:\n      boltdb_shipper:\n        active_index_directory: /loki/index\n        cache_location: /loki/cache\n        shared_store: filesystem\n      filesystem:\n        directory: /loki/chunks\n    limits_config:\n      enforce_metric_name: false\n      reject_old_samples: true\n      reject_old_samples_max_age: 168h\n\n",
+    "lines": 42,
+    "size_kb": 0.93,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/prometheus-configmap.yaml": {
+    "path": "k8s/prometheus-configmap.yaml",
+    "content": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: prometheus-config\ndata:\n  # Tên file cấu hình bên trong ConfigMap\n  prometheus.yml: |\n    global:\n      scrape_interval: 15s # Thu thập metrics mỗi 15 giây\n\n    scrape_configs:\n      # Job để Prometheus tự thu thập metrics của chính nó\n      - job_name: 'prometheus'\n        static_configs:\n          - targets: ['localhost:9090']\n\n      # Job để tự động khám phá và thu thập metrics từ các pod trong Kubernetes\n      - job_name: 'kubernetes-pods'\n        kubernetes_sd_configs:\n          - role: pod\n        # relabel_configs dùng để lọc và tùy chỉnh các target được khám phá\n        relabel_configs:\n          # Chỉ giữ lại các pod có annotation prometheus.io/scrape = true\n          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]\n            action: keep\n            regex: true\n          # Lấy path từ annotation để scrape (mặc định là /metrics)\n          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]\n            action: replace\n            target_label: __metrics_path__\n            regex: (.+)\n          # Lấy port từ annotation\n          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]\n            action: replace\n            regex: ([^:]+)(?::\\d+)?;(\\d+)\n            replacement: $1:$2\n            target_label: __address__\n          # Gán nhãn cho metrics bằng tên namespace của pod\n          - source_labels: [__meta_kubernetes_namespace]\n            action: replace\n            target_label: kubernetes_namespace\n          # Gán nhãn cho metrics bằng tên pod\n          - source_labels: [__meta_kubernetes_pod_name]\n            action: replace\n            target_label: kubernetes_pod_name\n\n",
+    "lines": 47,
+    "size_kb": 1.7,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/prometheus-deployment.yaml": {
+    "path": "k8s/prometheus-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: prometheus-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: prometheus\n  template:\n    metadata:\n      labels:\n        app: prometheus\n    spec:\n      # Gán ServiceAccount đã tạo ở bước RBAC\n      serviceAccountName: prometheus\n      containers:\n        - name: prometheus\n          image: prom/prometheus:v2.37.0\n          args:\n            - \"--config.file=/etc/prometheus/prometheus.yml\"\n          ports:\n            - containerPort: 9090\n          # Mount file cấu hình từ ConfigMap vào trong container\n          volumeMounts:\n            - name: prometheus-config-volume\n              mountPath: /etc/prometheus/\n      volumes:\n        - name: prometheus-config-volume\n          configMap:\n            name: prometheus-config\n\n",
+    "lines": 33,
+    "size_kb": 0.79,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/prometheus-pushgateway-deployment.yaml": {
+    "path": "k8s/prometheus-pushgateway-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: prometheus-pushgateway-deployment\n  labels:\n    app: prometheus-pushgateway\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: prometheus-pushgateway\n  template:\n    metadata:\n      labels:\n        app: prometheus-pushgateway\n    spec:\n      containers:\n      - name: prometheus-pushgateway\n        image: prom/pushgateway:v1.5.1\n        ports:\n        - containerPort: 9091\n\n",
+    "lines": 23,
+    "size_kb": 0.43,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/prometheus-pushgateway-service.yaml": {
+    "path": "k8s/prometheus-pushgateway-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: prometheus-pushgateway-service\n  labels:\n    app: prometheus-pushgateway\nspec:\n  ports:\n  - port: 9091\n    protocol: TCP\n    targetPort: 9091\n  selector:\n    app: prometheus-pushgateway\n  type: ClusterIP\n\n",
+    "lines": 16,
+    "size_kb": 0.25,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/prometheus-rbac.yaml": {
+    "path": "k8s/prometheus-rbac.yaml",
+    "content": "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: prometheus\n\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: prometheus\nrules:\n- apiGroups: [\"\"]\n  resources:\n  - nodes\n  - services\n  - endpoints\n  - pods\n  verbs: [\"get\", \"list\", \"watch\"]\n- apiGroups:\n  - \"extensions\"\n  resources:\n  - ingresses\n  verbs: [\"get\", \"list\", \"watch\"]\n- nonResourceURLs: [\"/metrics\"]\n  verbs: [\"get\"]\n\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRoleBinding\nmetadata:\n  name: prometheus\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: prometheus\nsubjects:\n- kind: ServiceAccount\n  name: prometheus\n  namespace: default # Sử dụng namespace default, có thể thay đổi nếu cần\n\n",
+    "lines": 41,
+    "size_kb": 0.71,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/prometheus-service.yaml": {
+    "path": "k8s/prometheus-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: prometheus-service\nspec:\n  # NodePort sẽ mở một port trên mỗi node trong cluster,\n  # cho phép truy cập từ bên ngoài.\n  type: NodePort\n  selector:\n    app: prometheus\n  ports:\n    - port: 9090\n      targetPort: 9090\n      # Port này sẽ được K8s tự động chọn, thường trong khoảng 30000-32767\n      nodePort: 30090\n\n",
+    "lines": 17,
+    "size_kb": 0.35,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/promtail-configmap.yaml": {
+    "path": "k8s/promtail-configmap.yaml",
+    "content": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: promtail-config\ndata:\n  promtail.yaml: |\n    server:\n      http_listen_port: 9080\n      grpc_listen_port: 0\n    positions:\n      filename: /tmp/positions.yaml\n    clients:\n      - url: http://loki-service:3100/loki/api/v1/push\n    scrape_configs:\n    - job_name: kubernetes-pods\n      kubernetes_sd_configs:\n      - role: pod\n      pipeline_stages:\n      - docker: {}\n      relabel_configs:\n      - source_labels:\n        - __meta_kubernetes_pod_node_name\n        target_label: __host__\n      - action: labelmap\n        regex: __meta_kubernetes_pod_label_(.+)\n      - action: replace\n        replacement: /var/log/pods/*$1/*.log\n        source_labels:\n        - __meta_kubernetes_pod_uid\n        - __meta_kubernetes_pod_container_name\n        target_label: __path__\n\n",
+    "lines": 33,
+    "size_kb": 0.8,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/promtail-daemonset-rbac.yaml": {
+    "path": "k8s/promtail-daemonset-rbac.yaml",
+    "content": "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: promtail-serviceaccount\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: promtail-clusterrole\nrules:\n- apiGroups: [\"\"]\n  resources:\n  - nodes\n  - services\n  - pods\n  verbs:\n  - get\n  - list\n  - watch\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRoleBinding\nmetadata:\n  name: promtail-clusterrolebinding\nsubjects:\n- kind: ServiceAccount\n  name: promtail-serviceaccount\n  namespace: default\nroleRef:\n  kind: ClusterRole\n  name: promtail-clusterrole\n  apiGroup: rbac.authorization.k8s.io\n---\napiVersion: apps/v1\nkind: DaemonSet\nmetadata:\n  name: promtail-daemonset\nspec:\n  selector:\n    matchLabels:\n      app: promtail\n  template:\n    metadata:\n      labels:\n        app: promtail\n    spec:\n      serviceAccountName: promtail-serviceaccount\n      containers:\n      - name: promtail\n        image: grafana/promtail:2.7.0\n        args:\n        - \"-config.file=/etc/promtail/promtail.yaml\"\n        volumeMounts:\n        - name: promtail-config-volume\n          mountPath: /etc/promtail\n        - name: logs\n          mountPath: /var/log\n      volumes:\n      - name: promtail-config-volume\n        configMap:\n          name: promtail-config\n      - name: logs\n        hostPath:\n          path: /var/log\n\n",
+    "lines": 66,
+    "size_kb": 1.27,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/rag-system-deployment.yaml": {
+    "path": "k8s/rag-system-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: rag-system-deployment\n  labels:\n    app: rag-system\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: rag-system\n  template:\n    metadata:\n      labels:\n        app: rag-system\n    spec:\n      containers:\n      - name: rag-system-worker\n        image: your-docker-username/legal-ai-rag-system:latest # Thay đổi username của bạn\n        env:\n          - name: KAFKA_BOOTSTRAP_SERVERS\n            value: \"kafka-service:29092\"\n          - name: POSTGRES_HOST\n            value: \"postgres-service\" # Giả sử service của Postgres có tên này\n          # Lấy thông tin nhạy cảm từ Kubernetes Secrets\n          - name: POSTGRES_USER\n            valueFrom:\n              secretKeyRef:\n                name: postgres-secret # Secret chứa thông tin Postgres\n                key: POSTGRES_USER\n          - name: POSTGRES_PASSWORD\n            valueFrom:\n              secretKeyRef:\n                name: postgres-secret\n                key: POSTGRES_PASSWORD\n          - name: OPENAI_API_KEY\n            valueFrom:\n              secretKeyRef:\n                name: openai-secret # Secret chứa API key của OpenAI\n                key: OPENAI_API_KEY\n\n",
+    "lines": 42,
+    "size_kb": 1.17,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/rag-system-service.yaml": {
+    "path": "k8s/rag-system-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: rag-system-service\nspec:\n  clusterIP: None # Định nghĩa đây là một headless service\n  selector:\n    app: rag-system\n\n",
+    "lines": 10,
+    "size_kb": 0.16,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/semantic-chunker-deployment.yaml": {
+    "path": "k8s/semantic-chunker-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: semantic-chunker-deployment\n  labels:\n    app: semantic-chunker\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: semantic-chunker\n  template:\n    metadata:\n      labels:\n        app: semantic-chunker\n      # annotations: # Sẽ thêm sau để tích hợp Prometheus\n      #   prometheus.io/scrape: 'true'\n      #   prometheus.io/port: '8002'\n    spec:\n      containers:\n      - name: semantic-chunker\n        image: your-docker-username/legal-ai-semantic-chunker:latest # Thay đổi username của bạn\n        ports:\n        - containerPort: 8002\n        livenessProbe:\n          httpGet:\n            path: /health\n            port: 8002\n          initialDelaySeconds: 15\n          periodSeconds: 20\n        readinessProbe:\n          httpGet:\n            path: /health\n            port: 8002\n          initialDelaySeconds: 5\n          periodSeconds: 10\n\n",
+    "lines": 38,
+    "size_kb": 0.89,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/semantic-chunker-service.yaml": {
+    "path": "k8s/semantic-chunker-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: semantic-chunker-service\nspec:\n  type: ClusterIP\n  selector:\n    app: semantic-chunker\n  ports:\n    - protocol: TCP\n      port: 80\n      targetPort: 8002\n\n",
+    "lines": 14,
+    "size_kb": 0.2,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/traefik-deployment.yaml": {
+    "path": "k8s/traefik-deployment.yaml",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: traefik-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: traefik\n  template:\n    metadata:\n      labels:\n        app: traefik\n    spec:\n      serviceAccountName: traefik-service-account\n      containers:\n        - name: traefik\n          image: traefik:v2.9\n          args:\n            - --api.insecure=true # Kích hoạt dashboard trên port 8080\n            - --providers.kubernetescrd # Cho phép Traefik sử dụng CRD (IngressRoute)\n            - --entrypoints.web.address=:80 # Định nghĩa entrypoint HTTP trên port 80\n          ports:\n            - name: web\n              containerPort: 80\n            - name: admin\n              containerPort: 8080\n\n",
+    "lines": 29,
+    "size_kb": 0.71,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/traefik-ingress-route.yaml": {
+    "path": "k8s/traefik-ingress-route.yaml",
+    "content": "apiVersion: traefik.containo.us/v1alpha1\nkind: IngressRoute\nmetadata:\n  name: intent-system-ingress-route\nspec:\n  entryPoints:\n    - web\n  routes:\n    - match: PathPrefix(`/api/v1/intent/classify`)\n      kind: Rule\n      services:\n        - name: intent-system-service\n          port: 80\n\n",
+    "lines": 15,
+    "size_kb": 0.28,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/traefik-jwt-middleware.yaml": {
+    "path": "k8s/traefik-jwt-middleware.yaml",
+    "content": "apiVersion: traefik.containo.us/v1alpha1\nkind: Middleware\nmetadata:\n  name: jwt-authenticator\n  namespace: default\nspec:\n  # Cấu hình này giả định bạn đang sử dụng một plugin tên là 'jwtauth' cho Traefik\n  # để xác thực JWT. Cấu hình thực tế có thể thay đổi tùy theo plugin bạn chọn.\n  plugin:\n    jwtauth:\n      # URL để Traefik lấy public key và xác thực chữ ký của JWT token.\n      jwksUrl: \"http://keycloak-service:8080/realms/master/protocol/openid-connect/certs\"\n      \n      # (Tùy chọn) Chuyển tiếp một số thông tin từ token vào header cho dịch vụ backend.\n      forwardHeaders:\n        X-Forwarded-User: \"preferred_username\"\n        X-Forwarded-Email: \"email\"\n\n",
+    "lines": 19,
+    "size_kb": 0.65,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/traefik-rbac.yaml": {
+    "path": "k8s/traefik-rbac.yaml",
+    "content": "apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: traefik-cluster-role\nrules:\n  - apiGroups:\n      - \"\"\n    resources:\n      - services\n      - endpoints\n      - secrets\n    verbs:\n      - get\n      - list\n      - watch\n  - apiGroups:\n      - extensions\n      - networking.k8s.io\n    resources:\n      - ingresses\n      - ingressclasses\n    verbs:\n      - get\n      - list\n      - watch\n  - apiGroups:\n      - traefik.containo.us\n    resources:\n      - ingressroutes\n      - middlewares\n      - tlsoptions\n    verbs:\n      - get\n      - list\n      - watch\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRoleBinding\nmetadata:\n  name: traefik-cluster-role-binding\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: traefik-cluster-role\nsubjects:\n  - kind: ServiceAccount\n    name: traefik-service-account\n    namespace: default\n---\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: traefik-service-account\n\n",
+    "lines": 55,
+    "size_kb": 0.95,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "k8s/traefik-service.yaml": {
+    "path": "k8s/traefik-service.yaml",
+    "content": "apiVersion: v1\nkind: Service\nmetadata:\n  name: traefik-service\nspec:\n  # Sử dụng LoadBalancer cho môi trường cloud. \n  # Nếu bạn chạy local, có thể đổi thành NodePort.\n  type: LoadBalancer \n  ports:\n    - protocol: TCP\n      name: web\n      port: 80\n      targetPort: 80\n    - protocol: TCP\n      name: admin\n      port: 8080\n      targetPort: 8080\n  selector:\n    app: traefik\n\n",
+    "lines": 21,
+    "size_kb": 0.37,
+    "language": "YAML",
+    "extension": ".yaml"
+  },
+  "docker-compose.yml": {
+    "path": "docker-compose.yml",
+    "content": "version: '3.8'\n\nservices:\n  # Phase 2: Core Services\n  intent-system:\n    build:\n      context: ./src/intent_system\n      dockerfile: Dockerfile\n    ports:\n      - \"8001:8001\"\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8001/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n\n  semantic-chunker:\n    build:\n      context: ./src/semantic_chunker\n      dockerfile: Dockerfile\n    ports:\n      - \"8002:8002\"\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8002/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n\n  # Phase 3: AI Services\n  legal-ontology:\n    build:\n      context: ./src/legal_ontology\n      dockerfile: Dockerfile\n    ports:\n      - \"8003:8003\"\n    depends_on:\n      neo4j:\n        condition: service_healthy\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8003/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n\n  rag-system:\n    build:\n      context: ./src/rag_system\n      dockerfile: Dockerfile\n    ports:\n      - \"8004:8004\"\n    depends_on:\n      postgres:\n        condition: service_healthy\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8004/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n\n  # Phase 4: Expert & Verification Services\n  expert-platform:\n    build:\n      context: ./src/expert_platform\n      dockerfile: Dockerfile\n    ports:\n      - \"8005:8005\"\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8005/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n\n  double-check:\n    build:\n      context: ./src/double_check\n      dockerfile: Dockerfile\n    ports:\n      - \"8006:8006\"\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8006/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n      \n  # Databases\n  neo4j:\n    image: neo4j:5.13\n    environment:\n      - NEO4J_AUTH=neo4j/legalai123\n      - NEO4J_PLUGINS=[\"apoc\"]\n    ports:\n      - \"7474:7474\"\n      - \"7687:7687\"\n    volumes:\n      - neo4j_data:/data\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD\", \"cypher-shell\", \"-u\", \"neo4j\", \"-p\", \"legalai123\", \"RETURN 1\"]\n      interval: 30s\n      timeout: 10s\n      retries: 5\n\n  postgres:\n    image: pgvector/pgvector:pg16\n    environment:\n      - POSTGRES_DB=legal_rag\n      - POSTGRES_USER=legalai\n      - POSTGRES_PASSWORD=legalai123\n    ports:\n      - \"5432:5432\"\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    networks:\n      - legal-ai-network\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U legalai -d legal_rag\"]\n      interval: 30s\n      timeout: 10s\n      retries: 5\n\n  # --- CORE INFRASTRUCTURE (MỚI THÊM VÀO) ---\n  zookeeper:\n    image: confluentinc/cp-zookeeper:7.0.1\n    networks:\n      - legal-ai-network\n    environment:\n      ZOOKEEPER_CLIENT_PORT: 2181\n      ZOOKEEPER_TICK_TIME: 2000\n\n  kafka:\n    image: confluentinc/cp-kafka:7.0.1\n    networks:\n      - legal-ai-network\n    depends_on:\n      - zookeeper\n    ports:\n      - \"9092:9092\"\n    environment:\n      KAFKA_BROKER_ID: 1\n      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'\n      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT\n      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092\n      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1\n      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0\n\n  redis:\n    image: \"redis:6.2-alpine\"\n    networks:\n      - legal-ai-network\n    ports:\n      - \"6379:6379\"\n\nvolumes:\n  neo4j_data:\n  postgres_data:\n\nnetworks:\n  legal-ai-network:\n    driver: bridge\n\n",
+    "lines": 174,
+    "size_kb": 3.78,
+    "language": "Unknown",
+    "extension": ".yml"
+  },
+  "src/intent_system/requirements.txt": {
+    "path": "src/intent_system/requirements.txt",
+    "content": "fastapi\nuvicorn\npydantic\nkafka-python\nprometheus-fastapi-instrumentator\nscikit-learn\njoblib\npandas\n",
+    "lines": 9,
+    "size_kb": 0.1,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/semantic_chunker/requirements.txt": {
+    "path": "src/semantic_chunker/requirements.txt",
+    "content": "# legal-ai-platform/src/semantic_chunker/requirements.txt\nfastapi==0.104.1\nuvicorn==0.24.0\npydantic==2.5.0\npython-dotenv==1.0.0\npandas\n",
+    "lines": 7,
+    "size_kb": 0.13,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/legal_ontology/requirements.txt": {
+    "path": "src/legal_ontology/requirements.txt",
+    "content": "fastapi==0.104.1\nuvicorn==0.24.0\nneo4j==5.14.0\npydantic==2.5.0\npython-dotenv==1.0.0\npandas\n",
+    "lines": 7,
+    "size_kb": 0.09,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/rag_system/requirements.txt": {
+    "path": "src/rag_system/requirements.txt",
+    "content": "kafka-python\nsentence-transformers\nopenai\npsycopg2-binary\npgvector\npandas\n",
+    "lines": 7,
+    "size_kb": 0.07,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/expert_platform/requirements.txt": {
+    "path": "src/expert_platform/requirements.txt",
+    "content": "kafka-python\nopenai\npandas\n",
+    "lines": 4,
+    "size_kb": 0.03,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/double_check/requirements.txt": {
+    "path": "src/double_check/requirements.txt",
+    "content": "kafka-python\nopenai\npandas\n",
+    "lines": 4,
+    "size_kb": 0.03,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/feedback_service/Requirements.txt": {
+    "path": "src/feedback_service/Requirements.txt",
+    "content": "fastapi\nuvicorn\npsycopg2-binary\npandas\n",
+    "lines": 5,
+    "size_kb": 0.04,
+    "language": "Unknown",
+    "extension": ".txt"
+  },
+  "src/dlq_monitor_worker/requirements.txt": {
+    "path": "src/dlq_monitor_worker/requirements.txt",
+    "content": "kafka-python\npandas\n",
+    "lines": 3,
+    "size_kb": 0.02,
+    "language": "Unknown",
+    "extension": ".txt"
+  }
+}

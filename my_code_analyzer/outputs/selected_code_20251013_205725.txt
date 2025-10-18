@@ -1,0 +1,480 @@
+============================================================
+FILE: k8s/intent-system-deployment.yaml
+LINES: 69 | SIZE: 1.77KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intent-system-deployment
+  labels:
+    app: intent-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: intent-system
+  template:
+    metadata:
+      labels:
+        app: intent-system
+      # Annotations để Prometheus có thể tự động khám phá
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: '/metrics'
+        prometheus.io/port: '8001'
+    spec:
+      containers:
+      - name: intent-system
+        image: your-docker-username/legal-ai-intent-system:latest
+        ports:
+        - containerPort: 8001
+        # --- CẬP NHẬT: THÊM CÁC BIẾN MÔI TRƯỜNG ---
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service:29092"
+        - name: POSTGRES_HOST
+          value: "postgres-service" # Giả sử tên service của Postgres là postgres-service
+        - name: POSTGRES_DB
+          value: "legal_rag"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        # --- KẾT THÚC CẬP NHẬT ---
+        # Cấu hình tài nguyên
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        # Health probes để K8s tự động kiểm tra sức khỏe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+
+
+
+============================================================
+FILE: k8s/semantic-chunker-deployment.yaml
+LINES: 38 | SIZE: 0.89KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semantic-chunker-deployment
+  labels:
+    app: semantic-chunker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: semantic-chunker
+  template:
+    metadata:
+      labels:
+        app: semantic-chunker
+      # annotations: # Sẽ thêm sau để tích hợp Prometheus
+      #   prometheus.io/scrape: 'true'
+      #   prometheus.io/port: '8002'
+    spec:
+      containers:
+      - name: semantic-chunker
+        image: your-docker-username/legal-ai-semantic-chunker:latest # Thay đổi username của bạn
+        ports:
+        - containerPort: 8002
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+
+
+============================================================
+FILE: k8s/legal-ontology-deployment.yaml
+LINES: 49 | SIZE: 1.21KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legal-ontology-deployment
+  labels:
+    app: legal-ontology
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: legal-ontology
+  template:
+    metadata:
+      labels:
+        app: legal-ontology
+    spec:
+      containers:
+      - name: legal-ontology
+        image: your-docker-username/legal-ai-legal-ontology:latest # Thay đổi username của bạn
+        ports:
+        - containerPort: 8003
+        env:
+          - name: NEO4J_URI
+            value: "bolt://neo4j-service:7687" # Giả sử service Neo4j có tên này
+          # Lấy thông tin nhạy cảm từ Kubernetes Secrets
+          - name: NEO4J_USER
+            valueFrom:
+              secretKeyRef:
+                name: neo4j-secret
+                key: NEO4J_USER
+          - name: NEO4J_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: neo4j-secret
+                key: NEO4J_PASSWORD
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 20
+          periodSeconds: 25
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 10
+          periodSeconds: 15
+
+
+
+============================================================
+FILE: k8s/rag-system-deployment.yaml
+LINES: 42 | SIZE: 1.17KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-system-deployment
+  labels:
+    app: rag-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-system
+  template:
+    metadata:
+      labels:
+        app: rag-system
+    spec:
+      containers:
+      - name: rag-system-worker
+        image: your-docker-username/legal-ai-rag-system:latest # Thay đổi username của bạn
+        env:
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka-service:29092"
+          - name: POSTGRES_HOST
+            value: "postgres-service" # Giả sử service của Postgres có tên này
+          # Lấy thông tin nhạy cảm từ Kubernetes Secrets
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret # Secret chứa thông tin Postgres
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret
+                key: POSTGRES_PASSWORD
+          - name: OPENAI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: openai-secret # Secret chứa API key của OpenAI
+                key: OPENAI_API_KEY
+
+
+
+============================================================
+FILE: k8s/expert-platform-deployment.yaml
+LINES: 24 | SIZE: 0.51KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: expert-platform-deployment
+  labels:
+    app: expert-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: expert-platform
+  template:
+    metadata:
+      labels:
+        app: expert-platform
+    spec:
+      containers:
+      - name: expert-platform-worker
+        image: your-docker-username/legal-ai-expert-platform:latest # Thay đổi username của bạn
+        env:
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka-service:29092"
+
+
+
+============================================================
+FILE: k8s/double-check-deployment.yaml
+LINES: 24 | SIZE: 0.49KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: double-check-deployment
+  labels:
+    app: double-check
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: double-check
+  template:
+    metadata:
+      labels:
+        app: double-check
+    spec:
+      containers:
+      - name: double-check-worker
+        image: your-docker-username/legal-ai-double-check:latest # Thay đổi username của bạn
+        env:
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka-service:29092"
+
+
+
+============================================================
+FILE: k8s/feedback-service-deployment.yaml
+LINES: 41 | SIZE: 1.04KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feedback-service-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feedback-service
+  template:
+    metadata:
+      labels:
+        app: feedback-service
+    spec:
+      containers:
+      - name: feedback-service-container
+        image: your-docker-registry/legal-ai-feedback-service:latest # Thay thế bằng image của bạn
+        ports:
+        - containerPort: 8007
+        env:
+        # Cấu hình kết nối DB. TRONG THỰC TẾ, HÃY DÙNG K8S SECRETS!
+        - name: POSTGRES_HOST
+          value: "postgres" # Tên service của PostgreSQL
+        - name: POSTGRES_DB
+          value: "legal_rag"
+        - name: POSTGRES_USER
+          value: "legalai"
+        - name: POSTGRES_PASSWORD
+          value: "legalai123" # Thay bằng secret
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 30
+
+
+
+============================================================
+FILE: k8s/dlq-monitor-worker-deployment.yaml
+LINES: 31 | SIZE: 0.69KB
+============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dlq-monitor-worker-deployment
+  labels:
+    app: dlq-monitor-worker
+spec:
+  replicas: 1 # Chỉ cần 1 bản sao cho dịch vụ giám sát này
+  selector:
+    matchLabels:
+      app: dlq-monitor-worker
+  template:
+    metadata:
+      labels:
+        app: dlq-monitor-worker
+    spec:
+      containers:
+      - name: dlq-monitor-worker
+        image: your-docker-username/legal-ai-dlq-monitor-worker:latest
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service:29092"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+
+
+
+============================================================
+FILE: k8s/loki-deployment-service.yaml
+LINES: 50 | SIZE: 0.94KB
+============================================================
+# File này gộp cả Deployment và Service cho Loki
+# Phiên bản này đã được sửa lỗi không khớp tên file cấu hình
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki-deployment
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+        - name: loki
+          image: grafana/loki:2.7.0
+          args:
+            # SỬA LỖI: Trỏ đến đúng tên file cấu hình là loki.yaml
+            - "-config.file=/etc/loki/loki.yaml"
+          ports:
+            - containerPort: 3100
+          volumeMounts:
+            - name: loki-config-volume
+              mountPath: /etc/loki
+      volumes:
+        - name: loki-config-volume
+          configMap:
+            name: loki-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-service
+spec:
+  selector:
+    app: loki
+  ports:
+    - protocol: TCP
+      port: 3100
+      targetPort: 3100
+
+
+
+
+============================================================
+FILE: k8s/traefik-ingress-route.yaml
+LINES: 15 | SIZE: 0.28KB
+============================================================
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: intent-system-ingress-route
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/api/v1/intent/classify`)
+      kind: Rule
+      services:
+        - name: intent-system-service
+          port: 80
+
+
+
+============================================================
+FILE: k8s/feedback-service-ingress-route.yaml
+LINES: 18 | SIZE: 0.43KB
+============================================================
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: feedback-service-ingress-route
+  namespace: default
+spec:
+  entryPoints:
+    - web # Entrypoint cho HTTP, thường là port 80
+  routes:
+    - match: PathPrefix(`/api/v1/feedback`)
+      kind: Rule
+      services:
+        - name: feedback-service-service
+          port: 80
+      middlewares:
+        - name: jwt-authenticator # Áp dụng middleware xác thực JWT
+
+
+
+============================================================
+FILE: k8s/traefik-jwt-middleware.yaml
+LINES: 19 | SIZE: 0.65KB
+============================================================
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: jwt-authenticator
+  namespace: default
+spec:
+  # Cấu hình này giả định bạn đang sử dụng một plugin tên là 'jwtauth' cho Traefik
+  # để xác thực JWT. Cấu hình thực tế có thể thay đổi tùy theo plugin bạn chọn.
+  plugin:
+    jwtauth:
+      # URL để Traefik lấy public key và xác thực chữ ký của JWT token.
+      jwksUrl: "http://keycloak-service:8080/realms/master/protocol/openid-connect/certs"
+      
+      # (Tùy chọn) Chuyển tiếp một số thông tin từ token vào header cho dịch vụ backend.
+      forwardHeaders:
+        X-Forwarded-User: "preferred_username"
+        X-Forwarded-Email: "email"
+
+
+

@@ -1,0 +1,28 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+python-dotenv==1.0.0
+
+# Database
+psycopg2-binary==2.9.7
+neo4j==5.14.0
+
+# Messaging
+kafka-python==2.0.2
+
+# AI/ML
+scikit-learn==1.3.2
+joblib==1.3.2
+openai==1.3.0
+sentence-transformers==2.2.2
+transformers==4.34.0
+torch==2.1.0
+
+# Monitoring
+prometheus-client==0.17.1
+
+# Utilities
+pandas==2.1.3
+numpy==1.24.3
+requests==2.31.0
