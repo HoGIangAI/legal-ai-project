@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "IntentClassified",
+  "namespace": "ai.legal.events",
+  "fields": [
+    {"name":"eventId","type":"string"},
+    {"name":"sessionId","type":"string"},
+    {"name":"text","type":"string"},
+    {"name":"domain","type":"string"},
+    {"name":"confidence","type":"float"},
+    {"name":"occurredAt","type":{"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}

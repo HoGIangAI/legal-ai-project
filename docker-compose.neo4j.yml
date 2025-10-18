@@ -1,0 +1,36 @@
+services:
+  neo4j:
+    image: neo4j:5.21
+    container_name: neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/legalai123
+      NEO4J_server_default__listen__address: "0.0.0.0"
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_apoc_export_file_enabled: "true"
+      NEO4J_apoc_import_file_enabled: "true"
+      NEO4J_server_memory_heap_initial__size: "512m"
+      NEO4J_server_memory_heap_max__size: "1g"
+      NEO4J_server_bolt_advertised__address: "localhost:7687"
+      NEO4J_server_http_advertised__address: "localhost:7474"
+    ports:
+      - "7474:7474"   # HTTP UI
+      - "7687:7687"   # Bolt
+    volumes:
+      - ./build/neo4j/data:/data
+      - ./build/neo4j/logs:/logs
+      - ./build/neo4j/plugins:/plugins
+    healthcheck:
+      # Đợi neo4j online rồi ping nhẹ
+      test: ["CMD-SHELL", "neo4j status || /bin/true"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # (tuỳ chọn) nếu bạn dùng chung network với Kafka compose:
+    # networks:
+    #   - legal-ai-net
+
+# (tuỳ chọn) Khai báo network dùng chung với Kafka (nếu Kafka compose có network này)
+# networks:
+#   legal-ai-net:
+#     external: true

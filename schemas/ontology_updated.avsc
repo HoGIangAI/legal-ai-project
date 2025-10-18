@@ -1,0 +1,12 @@
+{
+  "type":"record",
+  "name":"OntologyUpdated",
+  "namespace":"ai.legal.events",
+  "fields":[
+    {"name":"eventId","type":"string"},
+    {"name":"legalDocId","type":"string"},
+    {"name":"changeType","type":{"type":"enum","name":"ChangeType","symbols":["MINOR","MAJOR","AMENDMENT","REPLACEMENT"]}},
+    {"name":"version","type":"string"},
+    {"name":"occurredAt","type":{"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}

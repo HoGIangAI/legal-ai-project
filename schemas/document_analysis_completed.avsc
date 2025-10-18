@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "DocumentAnalysisCompleted",
+  "namespace": "ai.legal.events",
+  "fields": [
+    {"name": "eventId", "type": "string"},
+    {"name": "documentId", "type": "string"},
+    {"name": "analysisVersion", "type": "string"},
+    {"name": "totalFacts", "type": "int"},
+    {"name": "issuesDetected", "type": {"type": "array", "items": "string"}},
+    {"name": "qualityScore", "type": "float"},
+    {"name": "occurredAt", "type": {"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}

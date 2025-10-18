@@ -1,0 +1,13 @@
+{
+  "type":"record",
+  "name":"AgentTaskCreated",
+  "namespace":"ai.legal.events",
+  "fields":[
+    {"name":"eventId","type":"string"},
+    {"name":"taskId","type":"string"},
+    {"name":"taskType","type":"string"},
+    {"name":"payload","type":"string"},
+    {"name":"priority","type":"int"},
+    {"name":"occurredAt","type":{"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}

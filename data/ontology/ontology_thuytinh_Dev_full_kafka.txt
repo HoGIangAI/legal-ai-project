@@ -1,0 +1,543 @@
+Tốt—mình chuyển toàn bộ blueprint sang **Python** (Confluent Kafka + Avro + Schema Registry), có **producer/consumer mẫu**, **DLQ**, **retry/backoff**, **(tùy chọn) transactions**, và **script tạo topic**. Bạn chỉ cần copy vào repo rồi điền ENV.
+
+---
+
+# 0) Python stack & cài đặt
+
+**requirements.txt**
+
+```txt
+confluent-kafka==2.6.0
+fastavro==1.9.5
+requests==2.32.3
+python-dotenv==1.0.1
+```
+
+Cài:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+---
+
+# 1) ENV (Dev/Prod tách riêng)
+
+**.env (dev)**
+
+```env
+# Kafka brokers
+KAFKA_BOOTSTRAP_SERVERS=kafka-service:29092
+KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+
+# Schema Registry (dev)
+SCHEMA_REGISTRY_URL=http://schemaregistry.dev:8081
+SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO=
+SCHEMA_REGISTRY_COMPATIBILITY=BACKWARD
+
+# Topics (khớp key đã chốt)
+TOPIC_INTENTS=legal-ai-intents
+TOPIC_DOCUMENTS=legal-documents
+TOPIC_ONTOLOGY=legal-ontology-updates
+TOPIC_AGENT_TASKS=agent-coordination-tasks
+
+# DLQ (mặc định: <topic>.dlq.v1)
+DLQ_SUFFIX=.dlq.v1
+
+# Producer/Consumer tuning
+PRODUCER_LINGER_MS=10
+PRODUCER_BATCH_SIZE=131072
+PRODUCER_COMPRESSION=lz4
+CONSUMER_MAX_POLL_RECORDS=200
+CONSUMER_MAX_POLL_INTERVAL_MS=300000
+
+# (Tuỳ chọn) Transactions
+KAFKA_TRANSACTIONAL_ID=
+```
+
+**.env.prod (prod)**
+
+```env
+KAFKA_BOOTSTRAP_SERVERS=kafka-1:9093,kafka-2:9093,kafka-3:9093
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=SCRAM-SHA-512
+KAFKA_SASL_USERNAME=prod_user
+KAFKA_SASL_PASSWORD=******
+
+SCHEMA_REGISTRY_URL=https://schemaregistry.prod:8081
+SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO=sr_user:sr_pass
+SCHEMA_REGISTRY_COMPATIBILITY=BACKWARD
+
+TOPIC_INTENTS=legal-ai-intents
+TOPIC_DOCUMENTS=legal-documents
+TOPIC_ONTOLOGY=legal-ontology-updates
+TOPIC_AGENT_TASKS=agent-coordination-tasks
+DLQ_SUFFIX=.dlq.v1
+
+PRODUCER_LINGER_MS=10
+PRODUCER_BATCH_SIZE=131072
+PRODUCER_COMPRESSION=lz4
+CONSUMER_MAX_POLL_RECORDS=500
+CONSUMER_MAX_POLL_INTERVAL_MS=300000
+
+KAFKA_TRANSACTIONAL_ID=svc-legal-docs-tx-001
+```
+
+---
+
+# 2) Avro schemas (mẫu, bạn có thể mở rộng)
+
+**schemas/document_analysis_completed.avsc**
+
+```json
+{
+  "type": "record",
+  "name": "DocumentAnalysisCompleted",
+  "namespace": "ai.legal.events",
+  "fields": [
+    {"name": "eventId", "type": "string"},
+    {"name": "documentId", "type": "string"},
+    {"name": "analysisVersion", "type": "string"},
+    {"name": "totalFacts", "type": "int"},
+    {"name": "issuesDetected", "type": {"type": "array", "items": "string"}},
+    {"name": "qualityScore", "type": "float"},
+    {"name": "occurredAt", "type": {"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}
+```
+
+**schemas/intent_classified.avsc**
+
+```json
+{
+  "type": "record",
+  "name": "IntentClassified",
+  "namespace": "ai.legal.events",
+  "fields": [
+    {"name":"eventId","type":"string"},
+    {"name":"sessionId","type":"string"},
+    {"name":"text","type":"string"},
+    {"name":"domain","type":"string"},
+    {"name":"confidence","type":"float"},
+    {"name":"occurredAt","type":{"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}
+```
+
+**schemas/ontology_updated.avsc**
+
+```json
+{
+  "type":"record",
+  "name":"OntologyUpdated",
+  "namespace":"ai.legal.events",
+  "fields":[
+    {"name":"eventId","type":"string"},
+    {"name":"legalDocId","type":"string"},
+    {"name":"changeType","type":{"type":"enum","name":"ChangeType","symbols":["MINOR","MAJOR","AMENDMENT","REPLACEMENT"]}},
+    {"name":"version","type":"string"},
+    {"name":"occurredAt","type":{"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}
+```
+
+**schemas/agent_task_created.avsc**
+
+```json
+{
+  "type":"record",
+  "name":"AgentTaskCreated",
+  "namespace":"ai.legal.events",
+  "fields":[
+    {"name":"eventId","type":"string"},
+    {"name":"taskId","type":"string"},
+    {"name":"taskType","type":"string"},
+    {"name":"payload","type":"string"},
+    {"name":"priority","type":"int"},
+    {"name":"occurredAt","type":{"type":"long","logicalType":"timestamp-millis"}}
+  ]
+}
+```
+
+---
+
+# 3) Loader cấu hình chung
+
+**kafka_config.py**
+
+```python
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+def base_kafka_conf():
+    conf = {
+        "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS"),
+        "security.protocol": os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
+        "compression.type": os.getenv("PRODUCER_COMPRESSION", "lz4"),
+        "enable.idempotence": True,
+        "request.timeout.ms": 30000,
+    }
+    if conf["security.protocol"] in ("SASL_SSL", "SASL_PLAINTEXT"):
+        conf.update({
+            "sasl.mechanisms": os.getenv("KAFKA_SASL_MECHANISM", "SCRAM-SHA-512"),
+            "sasl.username": os.getenv("KAFKA_SASL_USERNAME"),
+            "sasl.password": os.getenv("KAFKA_SASL_PASSWORD"),
+        })
+    return conf
+
+def producer_conf():
+    conf = base_kafka_conf()
+    conf.update({
+        "linger.ms": int(os.getenv("PRODUCER_LINGER_MS", "10")),
+        "batch.size": int(os.getenv("PRODUCER_BATCH_SIZE", "131072")),
+        "acks": "all",
+        "retries": 10,
+        "delivery.timeout.ms": 120000,
+    })
+    tx_id = os.getenv("KAFKA_TRANSACTIONAL_ID", "")
+    if tx_id:
+        conf["transactional.id"] = tx_id
+        conf["max.in.flight.requests.per.connection"] = 1
+        conf["enable.idempotence"] = True
+    return conf
+
+def consumer_conf(group_id: str, auto_offset="earliest"):
+    conf = base_kafka_conf()
+    conf.update({
+        "group.id": group_id,
+        "auto.offset.reset": auto_offset,
+        "enable.auto.commit": False,
+        "max.poll.interval.ms": int(os.getenv("CONSUMER_MAX_POLL_INTERVAL_MS", "300000")),
+        "max.partition.fetch.bytes": 1048576,
+        "fetch.wait.max.ms": 25,
+    })
+    return conf
+
+def schema_registry_conf():
+    return {
+        "url": os.getenv("SCHEMA_REGISTRY_URL"),
+        "basic.auth.user.info": os.getenv("SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO", "")
+    }
+
+def topic_names():
+    return {
+        "intents": os.getenv("TOPIC_INTENTS", "legal-ai-intents"),
+        "documents": os.getenv("TOPIC_DOCUMENTS", "legal-documents"),
+        "ontology": os.getenv("TOPIC_ONTOLOGY", "legal-ontology-updates"),
+        "tasks": os.getenv("TOPIC_AGENT_TASKS", "agent-coordination-tasks"),
+        "dlq_suffix": os.getenv("DLQ_SUFFIX", ".dlq.v1"),
+    }
+```
+
+---
+
+# 4) Script tạo topic (partitions/retention/compaction)
+
+**create_topics.py**
+
+```python
+from confluent_kafka.admin import AdminClient, NewTopic, ConfigResource
+import os, sys, json
+from kafka_config import base_kafka_conf, topic_names
+
+def main():
+    conf = base_kafka_conf()
+    admin = AdminClient(conf)
+    tn = topic_names()
+
+    # sizing mặc định (bạn có thể sửa nhanh bằng env/args)
+    sizing = {
+        tn["intents"]:   {"partitions": 12, "replication_factor": 3, "configs": {"retention.ms": str(7*24*3600*1000)}},
+        tn["documents"]: {"partitions": 12, "replication_factor": 3, "configs": {"retention.ms": str(7*24*3600*1000)}},
+        tn["ontology"]:  {"partitions": 6,  "replication_factor": 3, "configs": {"cleanup.policy": "compact,delete", "min.cleanable.dirty.ratio": "0.1"}},
+        tn["tasks"]:     {"partitions": 12, "replication_factor": 3, "configs": {"retention.ms": str(7*24*3600*1000)}},
+    }
+    # DLQ
+    dlqs = { f"{t}{tn['dlq_suffix']}": {"partitions": 6, "replication_factor": 3, "configs":{"retention.ms": str(30*24*3600*1000)}}
+             for t in [tn["intents"], tn["documents"], tn["ontology"], tn["tasks"]]}
+
+    to_create = {**sizing, **dlqs}
+    new_topics = [NewTopic(name, num_partitions=cfg["partitions"],
+                           replication_factor=cfg["replication_factor"],
+                           config=cfg["configs"])
+                  for name, cfg in to_create.items()]
+
+    futures = admin.create_topics(new_topics)
+    for t, f in futures.items():
+        try:
+            f.result()
+            print(f"[OK] created {t}")
+        except Exception as e:
+            print(f"[WARN] {t}: {e}")
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+# 5) Producer Avro (key chuẩn, idempotent, (tùy chọn) transactions)
+
+**producer_avro.py**
+
+```python
+import json, time, uuid, os
+from confluent_kafka import SerializingProducer
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.serialization import StringSerializer
+from kafka_config import producer_conf, schema_registry_conf, topic_names
+
+def load_schema(path:str)->str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def make_producer():
+    return SerializingProducer({
+        **producer_conf(),
+        "key.serializer": StringSerializer("utf_8"),
+        "value.serializer": None  # set per-message with AvroSerializer
+    })
+
+def get_avro_serializer(sr, schema_str):
+    return AvroSerializer(sr, schema_str)
+
+def delivery_cb(err, msg):
+    if err:
+        print(f"[DELIVERY-ERROR] {err}")
+    else:
+        print(f"[DELIVERED] {msg.topic()}[{msg.partition()}]@{msg.offset()} key={msg.key()}")
+
+def main():
+    tn = topic_names()
+    sr = SchemaRegistryClient(schema_registry_conf())
+    doc_schema = get_avro_serializer(sr, load_schema("schemas/document_analysis_completed.avsc"))
+    intent_schema = get_avro_serializer(sr, load_schema("schemas/intent_classified.avsc"))
+
+    p = make_producer()
+    tx_id = os.getenv("KAFKA_TRANSACTIONAL_ID", "")
+    if tx_id:
+        p.init_transactions()
+        p.begin_transaction()
+
+    # Ví dụ gửi 1 event documents (key=documentId)
+    doc_event = {
+        "eventId": str(uuid.uuid4()),
+        "documentId": "doc-123",
+        "analysisVersion": "v1.0.0",
+        "totalFacts": 42,
+        "issuesDetected": ["missing_signature", "date_conflict"],
+        "qualityScore": 0.91,
+        "occurredAt": int(time.time()*1000)
+    }
+    p.produce(
+        topic=tn["documents"],
+        key=doc_event["documentId"],
+        value=doc_event,
+        value_serializer=doc_schema,
+        on_delivery=delivery_cb,
+        headers=[("content-type","avro")]
+    )
+
+    # Ví dụ gửi 1 event intents (key=sessionId)
+    intent_event = {
+        "eventId": str(uuid.uuid4()),
+        "sessionId": "sess-789",
+        "text": "Hỏi về điều kiện thành lập công ty",
+        "domain": "doanh_nghiep",
+        "confidence": 0.88,
+        "occurredAt": int(time.time()*1000)
+    }
+    p.produce(
+        topic=tn["intents"],
+        key=intent_event["sessionId"],
+        value=intent_event,
+        value_serializer=intent_schema,
+        on_delivery=delivery_cb,
+        headers=[("content-type","avro")]
+    )
+
+    p.flush()
+    if tx_id:
+        p.commit_transaction()
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+# 6) Consumer với **retry + DLQ** (at-least-once, idempotent downstream)
+
+**consumer_with_dlq.py**
+
+```python
+import json, time, uuid
+from confluent_kafka import DeserializingConsumer, Producer
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroDeserializer
+from confluent_kafka.serialization import StringDeserializer
+from kafka_config import consumer_conf, producer_conf, schema_registry_conf, topic_names
+
+MAX_RETRIES = 5
+
+def make_consumer(group_id: str):
+    return DeserializingConsumer({
+        **consumer_conf(group_id),
+        "key.deserializer": StringDeserializer("utf_8"),
+        "value.deserializer": None  # set per-topic below if cần
+    })
+
+def make_dlq_producer():
+    return Producer(producer_conf())
+
+def main():
+    tn = topic_names()
+    sr = SchemaRegistryClient(schema_registry_conf())
+    # Deserializer per topic schema
+    doc_deser = AvroDeserializer(sr, None)     # dynamic reading by SR
+    intent_deser = AvroDeserializer(sr, None)
+
+    c = make_consumer("cg.rag.ingest")
+    c.subscribe([tn["documents"]])
+
+    dlq_topic = tn["documents"] + tn["dlq_suffix"]
+    dlq_p = make_dlq_producer()
+
+    while True:
+        msg = c.poll(1.0)
+        if msg is None:
+            continue
+        try:
+            key = msg.key()
+            # AvroDeserializer cần raw bytes -> confluent handles automatically if registered
+            value = msg.value()  # sẽ là dict sau giải mã Avro
+            # --- Business handling ---
+            # TODO: xử lý idempotent (ví dụ check eventId trong store)
+            # giả định đôi khi lỗi transient:
+            if value and value.get("qualityScore", 1) < 0.5:
+                raise RuntimeError("Low qualityScore, reprocess later")
+
+            # xử lý OK ⇒ commit offset
+            c.commit(msg)
+            print(f"[OK] {msg.topic()} key={key} offset={msg.offset()}")
+        except Exception as e:
+            # Đọc/ghi header retry-count
+            headers = dict(msg.headers() or [])
+            retry_count = int(headers.get("retry-count", 0))
+            if retry_count < MAX_RETRIES:
+                # requeue bằng cách produce lại vào cùng topic với backoff nhẹ
+                time.sleep(0.2 * (retry_count+1))
+                dlv_key = msg.key()
+                dlv_val = msg.value()
+                dlv_headers = [(k, v) for k, v in headers.items() if k != "retry-count"]
+                dlv_headers.append(("retry-count", str(retry_count+1)))
+                dlq_p.produce(  # dùng producer thường để “parking” tạm thời vào DLQ? hoặc tái gửi topic gốc
+                    topic=dlq_topic,  # đối sách: gửi vào DLQ ngay; hoặc gửi lại topic gốc nếu muốn retry in-place
+                    key=dlv_key,
+                    value=dlv_val,
+                    headers=dlv_headers
+                )
+                dlq_p.flush()
+                c.commit(msg)  # commit để tránh “kẹt”; ta sẽ có 1 consumer khác chuyên đọc DLQ
+                print(f"[RETRY->{dlq_topic}] {retry_count+1}/{MAX_RETRIES} key={msg.key()}")
+            else:
+                # Quá số lần ⇒ để nguyên trong DLQ (đã gửi ở lần trước) hoặc gửi vào DLQ 'final'
+                print(f"[FAILED] exceeded retries for key={msg.key()} err={e}")
+```
+
+> Mô hình vận hành khuyến nghị:
+>
+> * **Consumer chính** xử lý topic gốc.
+> * **Consumer phụ cho DLQ** (mã tương tự) đọc `<topic>.dlq.v1` → bạn quyết định reprocess / inspect / move-to-final-dlq.
+
+---
+
+# 7) (Tuỳ chọn) Outbox pattern (Python + Postgres)
+
+**outbox.sql**
+
+```sql
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id UUID PRIMARY KEY,
+  topic TEXT NOT NULL,
+  key TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  headers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_published ON outbox_events (published, created_at);
+```
+
+**outbox_producer.py (đẩy batch từ DB → Kafka)**
+
+```python
+import json, time
+import psycopg2
+from confluent_kafka import Producer
+from kafka_config import producer_conf
+
+def fetch_outbox(conn, batch=500):
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, topic, key, payload, headers
+            FROM outbox_events
+            WHERE published = FALSE
+            ORDER BY created_at ASC
+            LIMIT %s FOR UPDATE SKIP LOCKED
+        """, (batch,))
+        rows = cur.fetchall()
+    return rows
+
+def mark_published(conn, ids):
+    with conn.cursor() as cur:
+        cur.execute("UPDATE outbox_events SET published=TRUE WHERE id = ANY(%s)", (ids,))
+    conn.commit()
+
+def main():
+    p = Producer(producer_conf())
+    conn = psycopg2.connect(dsn=os.getenv("PG_DSN"))
+
+    while True:
+        rows = fetch_outbox(conn)
+        if not rows:
+            time.sleep(0.5); continue
+        ids = []
+        for (id_, topic, key, payload, headers) in rows:
+            p.produce(topic=topic, key=key, value=json.dumps(payload), headers=[(k,str(v)) for k,v in (headers or {}).items()])
+            ids.append(id_)
+        p.flush()
+        mark_published(conn, ids)
+
+if __name__ == "__main__":
+    main()
+```
+
+> Prod nên dùng **Debezium + Kafka Connect** cho outbox thay vì pull thủ công.
+
+---
+
+# 8) Health & metrics gợi ý (để giữ p99 < 100ms)
+
+* **Producer**: `linger.ms=5–20`, `batch.size=64–128KB`, `compression=lz4`, `acks=all`, idempotent.
+* **Consumer**: concurrency = *số instance* × *số partitions*; commit sync sau xử lý thành công.
+* **Monitoring**: exporter lag + JMX; cảnh báo p99 latency/topic, lag, error-rate, ISR.
+
+---
+
+## Kết luận
+
+* Bộ Python ở trên bám đúng “keying, Avro + BACKWARD, DLQ, semantics, sizing” đã chốt.
+* Bạn chạy theo thứ tự:
+
+  1. tạo ENV → `create_topics.py`,
+  2. đẩy schema/produce thử bằng `producer_avro.py`,
+  3. chạy `consumer_with_dlq.py` (consumer DLQ riêng),
+  4. (tuỳ chọn) tích hợp **outbox** cho luồng ghi DB → phát event.
+
+Nếu bạn cho mình 4–5 field cụ thể của 1–2 sự kiện ưu tiên (ví dụ `IntentClassified` & `DocumentAnalysisCompleted` bản chuẩn), mình sẽ tinh chỉnh schema + thêm validator và test mini ngay trong Python.
+

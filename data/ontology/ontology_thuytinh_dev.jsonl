@@ -1,0 +1,11 @@
+{"op":"upsert","node":{"labels":["LawArticle"],"id":"A001","props":{"title":"Điều 1. Phạm vi điều chỉnh","chapter":"Chương I","law":"Luật Xử lý Vi phạm","year":2024}}}
+{"op":"upsert","node":{"labels":["LawArticle"],"id":"A002","props":{"title":"Điều 2. Đối tượng áp dụng","chapter":"Chương I","law":"Luật Xử lý Vi phạm","year":2024}}}
+{"op":"upsert","node":{"labels":["LawConcept"],"id":"K001","props":{"name":"Vi phạm hành chính","definition":"Hành vi có lỗi của cá nhân, tổ chức vi phạm quy định của pháp luật về quản lý nhà nước"}}}
+{"op":"upsert","node":{"labels":["LawConcept"],"id":"K002","props":{"name":"Biện pháp xử lý","definition":"Các biện pháp được áp dụng nhằm xử lý hành vi vi phạm"}}}
+{"op":"upsert","node":{"labels":["LawEntity"],"id":"E001","props":{"name":"Cá nhân","type":"chủ thể vi phạm","note":"Có năng lực hành vi dân sự đầy đủ"}}}
+{"op":"upsert","node":{"labels":["LawEntity"],"id":"E002","props":{"name":"Tổ chức","type":"chủ thể vi phạm","note":"Bao gồm doanh nghiệp, hợp tác xã, đơn vị sự nghiệp"}}}
+{"op":"upsert","edge":{"type":"REFERS_TO","from":{"labels":["LawArticle"],"id":"A001"},"to":{"labels":["LawConcept"],"id":"K001"},"props":{"note":"Điều 1 giải thích khái niệm vi phạm hành chính"}}}
+{"op":"upsert","edge":{"type":"REGULATES","from":{"labels":["LawArticle"],"id":"A002"},"to":{"labels":["LawEntity"],"id":"E001"},"props":{"note":"Điều 2 quy định đối tượng là cá nhân"}}}
+{"op":"upsert","edge":{"type":"REGULATES","from":{"labels":["LawArticle"],"id":"A002"},"to":{"labels":["LawEntity"],"id":"E002"},"props":{"note":"Điều 2 quy định đối tượng là tổ chức"}}}
+{"op":"upsert","edge":{"type":"DEFINES","from":{"labels":["LawConcept"],"id":"K002"},"to":{"labels":["LawConcept"],"id":"K001"},"props":{"note":"Biện pháp xử lý liên quan đến vi phạm hành chính"}}}
+
