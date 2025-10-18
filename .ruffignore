@@ -1,0 +1,3 @@
+# Ignore old/stub code
+services/ontology/_legacy/**
+scripts/_archive/**

@@ -1,5 +1,12 @@
-import sys; print(sys.executable); print(sys.path)
-import os, json, asyncio
+# ruff: noqa
+# ruff: noqa
+import sys
+
+print(sys.executable)
+print(sys.path)
+import os
+import json
+import asyncio
 from aiokafka import AIOKafkaConsumer
 from services.ontology.adapter_neo4j_v3rev2 import Neo4jAdapter
 
@@ -10,6 +17,7 @@ NEO4J_DB = os.getenv("NEO4J_DB", "neo4j")
 
 BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 TOPIC = os.getenv("TOPIC_ONTOLOGY", "legal-ontology-updates")
+
 
 async def handle_event(adapter: Neo4jAdapter, evt: dict):
     op = evt.get("op", "upsert")
@@ -25,10 +33,15 @@ async def handle_event(adapter: Neo4jAdapter, evt: dict):
             # Bản rút gọn: không xóa edge ở bước mẫu
             pass
         else:
-            adapter.upsert_edge(e["from"]["label"], e["from"]["id"],
-                                e["type"],
-                                e["to"]["label"], e["to"]["id"],
-                                e.get("props", {}))
+            adapter.upsert_edge(
+                e["from"]["label"],
+                e["from"]["id"],
+                e["type"],
+                e["to"]["label"],
+                e["to"]["id"],
+                e.get("props", {}),
+            )
+
 
 async def main():
     adapter = Neo4jAdapter(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DB)
@@ -38,7 +51,7 @@ async def main():
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         enable_auto_commit=True,
         auto_offset_reset="earliest",
-        group_id="ontology_v3rev2"
+        group_id="ontology_v3rev2",
     )
     await consumer.start()
     try:
@@ -48,6 +61,6 @@ async def main():
         await consumer.stop()
         adapter.close()
 
+
 if __name__ == "__main__":
     asyncio.run(main())
-

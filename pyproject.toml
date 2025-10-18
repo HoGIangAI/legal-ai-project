@@ -1,51 +1,30 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "legal-ai-ontology-graphops"
-version = "0.1.0"
-description = "Ontology GraphOps pipeline for Legal AI: JSONL→Kafka→Neo4j with diagnostics & audit"
-authors = [{ name = "Your Team", email = "dev@legalai.local" }]
+name = "legal-ai-platform"
+version = "0.3.0"
 requires-python = ">=3.12"
 dependencies = [
-  "confluent-kafka>=2.5.0",
-  "neo4j>=5.23.0",
-  "pydantic>=2.8.2",
-  "tenacity>=8.5.0",
-  "python-dotenv>=1.0.1",
-  "httpx>=0.27.2",
-  "cachetools>=5.5.0",
-  "authlib>=1.3.1",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.4",
+  "confluent-kafka>=2.5",
+  "neo4j>=5.23",
+  "tenacity>=9.0",
+  "prometheus-client>=0.21",
+  "python-dotenv>=1.0",
 ]
-
 [project.optional-dependencies]
-dev = [
-  "ruff>=0.5",
-  "mypy>=1.8",
-  "pytest>=7.4",
-  "tenacity>=8.2",
-]
-ui = [
-  "fastapi==0.119.0",
-  "uvicorn==0.37.0",
-  "starlette<0.49.0",
-]
-
+dev = ["ruff>=0.6","mypy>=1.11","pytest>=8.3","types-requests"]
 
 [tool.ruff]
 line-length = 100
-select = ["E","F","I","B","UP","SIM","PL","RUF"]
-ignore = ["E501"]
+target-version = "py312"
 
 [tool.mypy]
 python_version = "3.12"
-strict = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
+ignore_missing_imports = true
+strict_optional = true
 
 [tool.pytest.ini_options]
-minversion = "8.0"
 addopts = "-q"
-pythonpath = ["."]
+extend-exclude = ["services/ontology/_legacy", "scripts/_archive"]

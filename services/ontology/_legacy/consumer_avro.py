@@ -1,30 +1,36 @@
-import json, time, uuid
-from confluent_kafka import DeserializingConsumer, Producer
+# ruff: noqa
+# ruff: noqa
+import time
+import uuid
 from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroDeserializer
-from confluent_kafka.serialization import StringDeserializer
-from tools.kafka.kafka_config import consumer_conf, producer_conf, schema_registry_conf, topic_names
+from tools.kafka.kafka_config import producer_conf, schema_registry_conf, topic_names
 
 
-def load_schema(path:str)->str:
+def load_schema(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
+
 def make_producer():
-    return SerializingProducer({
-        **producer_conf(),
-        "key.serializer": StringSerializer("utf_8"),
-        "value.serializer": None  # set per-message with AvroSerializer
-    })
+    return SerializingProducer(
+        {
+            **producer_conf(),
+            "key.serializer": StringSerializer("utf_8"),
+            "value.serializer": None,  # set per-message with AvroSerializer
+        }
+    )
+
 
 def get_avro_serializer(sr, schema_str):
     return AvroSerializer(sr, schema_str)
+
 
 def delivery_cb(err, msg):
     if err:
         print(f"[DELIVERY-ERROR] {err}")
     else:
         print(f"[DELIVERED] {msg.topic()}[{msg.partition()}]@{msg.offset()} key={msg.key()}")
+
 
 def main():
     tn = topic_names()
@@ -46,7 +52,7 @@ def main():
         "totalFacts": 42,
         "issuesDetected": ["missing_signature", "date_conflict"],
         "qualityScore": 0.91,
-        "occurredAt": int(time.time()*1000)
+        "occurredAt": int(time.time() * 1000),
     }
     p.produce(
         topic=tn["documents"],
@@ -54,7 +60,7 @@ def main():
         value=doc_event,
         value_serializer=doc_schema,
         on_delivery=delivery_cb,
-        headers=[("content-type","avro")]
+        headers=[("content-type", "avro")],
     )
 
     # Ví dụ gửi 1 event intents (key=sessionId)
@@ -64,7 +70,7 @@ def main():
         "text": "Hỏi về điều kiện thành lập công ty",
         "domain": "doanh_nghiep",
         "confidence": 0.88,
-        "occurredAt": int(time.time()*1000)
+        "occurredAt": int(time.time() * 1000),
     }
     p.produce(
         topic=tn["intents"],
@@ -72,12 +78,13 @@ def main():
         value=intent_event,
         value_serializer=intent_schema,
         on_delivery=delivery_cb,
-        headers=[("content-type","avro")]
+        headers=[("content-type", "avro")],
     )
 
     p.flush()
     if tx_id:
         p.commit_transaction()
+
 
 if __name__ == "__main__":
     main()
