@@ -13,3 +13,33 @@ build/
 .env
 .env.*
 !.env.example
+# virtual env / build / IDE
+.venv/
+venv/
+__pycache__/
+build/
+dist/
+*.egg-info/
+.idea/
+.vscode/
+
+# local logs & archives
+*.log
+loop.log
+*.tar
+*.tar.gz
+*.zip
+
+# local stacks / infra samples
+docker/
+docker-compose.yml
+docker-compose.ops-gateway.yml
+docker-compose.kafka.yml.bak
+services/docker-compose.yml
+grafana/
+k8s/
+migrations/
+legal-ai-venv/
+
+# misc local
+tmp_sample.txt
